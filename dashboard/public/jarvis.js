@@ -1,11 +1,28 @@
 // === DATA ===
 let D = null;
+
+// === I18N ===
+const L = window.__CRUCIX_LOCALE__ || {};
+function t(keyPath, fallback) {
+  const keys = keyPath.split('.');
+  let value = L;
+  for (const key of keys) {
+    if (value && typeof value === 'object' && key in value) {
+      value = value[key];
+    } else {
+      return fallback || keyPath;
+    }
+  }
+  return typeof value === 'string' ? value : (fallback || keyPath);
+}
+
 // === GLOBALS ===
 let globe = null;
 let globeInitialized = false;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
+let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 const signalGuideItems = [
   {
@@ -157,7 +174,7 @@ function togglePerfMode(){
   localStorage.setItem('crucix_low_perf', String(lowPerfMode));
   document.body.classList.toggle('low-perf', lowPerfMode);
   const perfStatus = document.getElementById('perfStatus');
-  if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LOW' : 'HIGH';
+  if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LITE' : 'FULL';
   if(globe){
     globe.controls().autoRotate = !lowPerfMode;
     globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
@@ -169,31 +186,47 @@ function togglePerfMode(){
     renderRight();
   }
 }
-window.togglePerfMode = togglePerfMode;
+
 // === TOPBAR ===
+function getRegionControlsMarkup(){
+  return ['world','americas','europe','middleEast','asiaPacific','africa'].map(r=>
+    `<button class="region-btn ${r===currentRegion?'active':''}" data-region="${r}" onclick="setRegion('${r}')">${r==='middleEast'?'MIDDLE EAST':r==='asiaPacific'?'ASIA PACIFIC':r.toUpperCase()}</button>`
+  ).join('');
+}
+
+function renderRegionControls(){
+  const mapRegionBar = document.getElementById('mapRegionBar');
+  if(!mapRegionBar) return;
+  if(isMobileLayout()){
+    mapRegionBar.innerHTML = '';
+    mapRegionBar.style.display = 'none';
+    return;
+  }
+  mapRegionBar.innerHTML = getRegionControlsMarkup();
+  mapRegionBar.style.display = 'flex';
+}
+
 function renderTopbar(){
+  const mobile = isMobileLayout();
   const ts = new Date(D.meta.timestamp);
   const d = ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
-  const t = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
+  const timeStr = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
   document.getElementById('topbar').innerHTML=`
     <div class="top-left">
       <span class="brand">CRUCIX MONITOR</span>
       <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
     </div>
-    <div class="top-center">
-      ${['world','americas','europe','middleEast','asiaPacific','africa'].map(r=>
-        `<button class="region-btn ${r==='world'?'active':''}" data-region="${r}" onclick="setRegion('${r}')">${r==='middleEast'?'MIDDLE EAST':r==='asiaPacific'?'ASIA PACIFIC':r.toUpperCase()}</button>`
-      ).join('')}
-    </div>
+    ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
-      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">PERF <span class="v" id="perfStatus">${lowPerfMode?'LOW':'HIGH'}</span></button>
-      <span class="meta-pill">SWEEP <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
-      <span class="meta-pill">${d} <span class="v">${t}</span></span>
-      <span class="meta-pill">SOURCES <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
-      ${D.delta?.summary ? `<span class="meta-pill">DELTA <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; RISK-OFF':D.delta.summary.direction==='risk-on'?'&#x25BC; RISK-ON':'&#x25C6; MIXED'}</span></span>` : ''}
-      <button class="guide-btn" onclick="openGlossary()">What Signals Mean</button>
-      <span class="alert-badge">HIGH ALERT</span>
+      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
+      <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
+      <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
+      <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
+      ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
+      <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
+      <span class="alert-badge">${t('dashboard.highAlert','HIGH ALERT')}</span>
     </div>`;
+  renderRegionControls();
 }
 
 // === LEFT RAIL ===
@@ -205,16 +238,16 @@ function renderLeftRail(){
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
   const layers=[
-    {name:'Air Activity',count:totalAir,dot:'air',sub:`${D.air.length} theaters`},
-    {name:'Thermal Spikes',count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} night det.`},
-    {name:'SDR Coverage',count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} online`},
-    {name:'Maritime Watch',count:D.chokepoints.length,dot:'maritime',sub:'chokepoints'},
-    {name:'Nuclear Sites',count:D.nuke.length,dot:'nuke',sub:'monitors'},
-    {name:'Conflict Events',count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} fatalities`},
-    {name:'Health Watch',count:D.who.length,dot:'health',sub:'WHO alerts'},
-    {name:'World News',count:newsCount,dot:'news',sub:'RSS geolocated'},
-    {name:'OSINT Feed',count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} urgent`},
-    {name:'Satellites',count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} new (30d)`}
+    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
+    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`},
+    {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
+    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
+    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
+    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
+    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
+    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
+    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
   const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
@@ -227,26 +260,26 @@ function renderLeftRail(){
 
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
-      <div class="sec-head"><h3>Sensor Grid</h3><span class="badge">LIVE</span></div>
+      <div class="sec-head"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
       ${layers.map(l=>`<div class="layer-item"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>Nuclear Watch</h3><span class="badge">RADIATION</span></div>
-      <div class="nuke-ok">${allNormal?'&#9679; ALL SITES NORMAL':'&#9888; ANOMALY DETECTED'}</div>
+      <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
+      <div class="nuke-ok">${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
       ${nukeHtml}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>Risk Gauges</h3><span class="badge">STRESS</span></div>
-      <div class="econ-row"><span class="elabel">VIX (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">HY Spread</span><span class="eval">${hy?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">USD Index</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">Jobless Claims</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">30Y Mortgage</span><span class="eval">${mort?.value||'--'}%</span></div>
-      <div class="econ-row"><span class="elabel">M2 Supply</span><span class="eval">$${(m2?.value/1000)?.toFixed(1)||'--'}T</span></div>
-      <div class="econ-row"><span class="elabel">Nat. Debt</span><span class="eval">$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T</span></div>
+      <div class="sec-head"><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.vix','VIX')} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.hySpread','HY Spread')}</span><span class="eval">${hy?.value||'--'}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value||'--'}%</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">$${(m2?.value/1000)?.toFixed(1)||'--'}T</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T</span></div>
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>Space Watch</h3><span class="badge">CELESTRAK</span></div>
+      <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
       ${D.space ? `
         <div class="econ-row"><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
         <div class="econ-row"><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
@@ -275,8 +308,8 @@ function bindMapLifecycleEvents(){
 
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:'Air Traffic'},{c:'#ff5f63',l:'Thermal/Fire'},{c:'rgba(255,120,80,0.8)',l:'Conflict'},{c:'#44ccff',l:'SDR Receiver'},
-     {c:'#ffe082',l:'Nuclear Site'},{c:'#b388ff',l:'Chokepoint'},{c:'#ffb84c',l:'OSINT Event'},{c:'#69f0ae',l:'Health Alert'},{c:'#81d4fa',l:'World News'},{c:'#ff9800',l:'Weather Alert'},{c:'#cddc39',l:'EPA RadNet'},{c:'#ffffff',l:'Space Station'},{c:'#6495ed',l:'GDELT Event'}]
+    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
+     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
     .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
@@ -694,6 +727,13 @@ function toggleFlights() {
   flightsVisible = !flightsVisible;
   const btn = document.getElementById('flightToggle');
   btn.classList.toggle('off', !flightsVisible);
+  if(isFlat){
+    if(flatG){
+      flatG.selectAll('*').remove();
+      drawFlatMap();
+    }
+    return;
+  }
   if(!globe){
     return;
   }
@@ -708,7 +748,7 @@ function toggleFlights() {
     globe.labelsData(lbls);
   }
 }
-window.toggleFlights = toggleFlights;
+
 // === FLAT/GLOBE TOGGLE ===
 const flatRegionBounds = {
   world:[[-180,-60],[180,80]], americas:[[-130,10],[-60,55]], europe:[[-12,34],[45,72]],
@@ -752,7 +792,6 @@ function toggleMapMode(){
     });
   }
 }
-window.toggleMapMode = toggleMapMode
 
 function initFlatMap(){
   const container = document.getElementById('mapContainer');
@@ -767,13 +806,6 @@ function initFlatMap(){
     flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
     flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
       .style('display',k>=2.5?'block':'none');
-    // Priority-based visibility: hide low-priority markers at low zoom
-    flatG.selectAll('[data-priority]').style('display',function(){
-      const p=+this.dataset.priority;
-      if(p<=1) return 'block';
-      if(p<=2) return k>=2?'block':'none';
-      return k>=3.5?'block':'none';
-    });
   });
   flatSvg.call(flatZoom);
   drawFlatMap();
@@ -802,12 +834,14 @@ function plotFlatMarkers(){
   };
   // Air
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
-    const c=airCoords[i];if(!c)return;
-    const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
-    if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
-  });
+  if(flightsVisible){
+    D.air.forEach((a,i)=>{
+      const c=airCoords[i];if(!c)return;
+      const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
+        ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
+      if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
+    });
+  }
   // Thermal
   D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
@@ -855,25 +889,27 @@ function plotFlatMarkers(){
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
   // Flight corridors
-  const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
-  const cG=flatG.append('g').attr('class','corridors-layer');
-  for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
-    const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
-    if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
-    const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
-    const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
-    const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
-    cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
-  }}
-  D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
-    if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
-    const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
-  })});
+  if(flightsVisible){
+    const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+    const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
+    const cG=flatG.append('g').attr('class','corridors-layer');
+    for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
+      const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
+      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
+      const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
+      const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
+      const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+      cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
+    }}
+    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
+      if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
+      const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
+    })});
+  }
 }
 
 // Update setRegion for flat mode
@@ -883,6 +919,7 @@ const _origSetRegion = setRegion;
 const _origMapZoom = mapZoom;
 
 function setRegion(r){
+  currentRegion = r;
   document.querySelectorAll('.region-btn').forEach(b=>b.classList.toggle('active',b.dataset.region===r));
   closePopup();
   if(isFlat && flatSvg && flatZoom){
@@ -898,7 +935,7 @@ function setRegion(r){
     globe.pointOfView(pov,1000);
   }
 }
-window.setRegion = setRegion
+
 function mapZoom(factor){
   if(isFlat && flatSvg && flatZoom){
     flatSvg.transition().duration(300).call(flatZoom.scaleBy,factor);
@@ -907,7 +944,7 @@ function mapZoom(factor){
     globe.pointOfView({altitude:pov.altitude/factor},300);
   }
 }
-window.mapZoom = mapZoom;
+
 // Sparkline SVG generator
 function mkSparkSvg(values, isGood){
   if(!values || values.length < 2) return '';
@@ -923,7 +960,7 @@ function mkSparkSvg(values, isGood){
   const last=pts[pts.length-1];
   return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}"><polyline class="spark-line ${cls}" points="${pts.join(' ')}"/><circle class="${cls} spark-dot" cx="${last.split(',')[0]}" cy="${last.split(',')[1]}" r="2" fill="${isGood?'var(--accent)':'var(--danger)'}"/></svg>`;
 }
-window.mkSparkSvg = mkSparkSvg;
+
 // === LOWER GRID ===
 function renderLower(){
   const mobile = isMobileLayout();
@@ -941,7 +978,7 @@ function renderLower(){
     const pct=wtiMax===wtiMin?50:((v-wtiMin)/(wtiMax-wtiMin))*100;
     return `<div class="spark-bar" style="height:${Math.max(pct,8)}%"></div>`;
   }).join('');
-window.renderLower = renderLower;
+
   // Helper: format market quote card
   const mktCard = (q) => {
     if(!q||q.error) return '';
@@ -949,6 +986,7 @@ window.renderLower = renderLower;
     const arrow = q.changePct>=0?'&#9650;':'&#9660;';
     return `<div class="mc"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${q.symbol.includes('BTC')||q.symbol.includes('ETH')?'$'+q.price.toLocaleString():'$'+q.price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
   };
+
   // VIX from Yahoo Finance live data (fallback to FRED)
   const vixLive = mkt.vix;
   const vixFred = D.fred.find(f=>f.id==='VIXCLS');
@@ -982,15 +1020,23 @@ window.renderLower = renderLower;
   const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
 
   // NEWS TICKER — merges RSS + GDELT + Telegram into flowing cards (moved from right rail)
-  const feed = (D.newsFeed || []).slice(0, 40);
+  const feed = (D.newsFeed || []).slice(0, 20);
   const srcClass = s => {
     if (!s) return 'other';
     const sl = s.toLowerCase();
+    // Africa-focused sources first (before generic DW/NYT)
+    if (sl.includes('dw africa') || sl.includes('africa news') || sl.includes('nyt africa') || sl.includes('rfi')) return 'af';
+    if (sl.includes('mercopress')) return 'sa';
+    if (sl.includes('indian express') || sl.includes('the hindu')) return 'ind';
+    if (sl.includes('sbs')) return 'anz';
     if (sl.includes('bbc')) return 'bbc';
-    if (sl.includes('nyt') || sl.includes('times')) return 'nyt';
     if (sl.includes('jazeera') || sl.includes('alj')) return 'alj';
     if (sl.includes('gdelt')) return 'gdelt';
     if (sl.includes('telegram')) return 'tg';
+    if (sl.includes('npr')) return 'us';
+    if (sl.includes('dw') || sl.includes('deutsche')) return 'dw';
+    if (sl.includes('france') || sl.includes('euronews')) return 'eu';
+    if (sl.includes('nyt') || sl.includes('times')) return 'nyt';
     return 'other';
   };
   const tickerCards = feed.map(n => {
@@ -1018,6 +1064,60 @@ window.renderLower = renderLower;
       <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
     </div>`;
 
+
+  const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
+      <div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div>
+      <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
+        <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
+      </div>
+    </div>`;
+  const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
+  const macroPanel = `<div class="g-panel lp-macro">
+      <div class="sec-head"><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
+      ${hasMarkets?`<div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
+        <div class="metrics-row">${indexCards}</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
+        <div class="metrics-row">${cryptoCards}</div>
+      </div>`:''}
+      <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
+        <div class="metrics-row">${metrics.map(m=>{
+          const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
+          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+        }).join('')}</div>
+      </div>
+      <div style="margin-top:6px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">WTI 5-DAY</div>
+        <div class="spark">${sparkHtml}</div>
+      </div>
+    </div>`;
+  const ideasPanel = `<div class="g-panel lp-ideas">
+      <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
+      ${ideasHtml}
+      <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
+    </div>`;
+  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
+}
+
+// === RIGHT RAIL ===
+function renderRight(){
+  const mobile = isMobileLayout();
+  // CROSS-SOURCE SIGNALS — moved from lower grid to right rail
+  const signals=D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('');
+
+  // OSINT TICKER — Telegram + WHO as flowing cards
+  const signalMetrics=[
+    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
+    {l:'Air Theaters',v:D.air.length,p:60},
+    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
+    {l:'SDR Nodes',v:D.sdr.total,p:92},
+    {l:'Chokepoints',v:D.chokepoints.length,p:50},
+    {l:'WHO Alerts',v:D.who.length,p:40}
+  ];
+
   // DELTA PANEL — what changed since last sweep
   const delta = D.delta || {};
   const ds = delta.summary || {};
@@ -1040,80 +1140,26 @@ window.renderLower = renderLower;
     const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
     deltaRows.push(`<div class="delta-row"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
   }
-  const deltaHtml = hasDelta ? deltaRows.join('') : '<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No changes since last sweep</div>';
-
-  const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>Live News Ticker</h3><span class="badge">${feed.length} ITEMS</span></div>
-      <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
-      </div>
-    </div>`;
-  const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
-  const macroPanel = `<div class="g-panel lp-macro">
-      <div class="sec-head"><h3>Macro + Markets</h3><span class="badge">${mkt.timestamp?'LIVE':'DELAYED'}</span></div>
-      ${hasMarkets?`<div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
-        <div class="metrics-row">${indexCards}</div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
-        <div class="metrics-row">${cryptoCards}</div>
-      </div>`:''}
-      <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
-        <div class="metrics-row">${metrics.map(m=>{
-          const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
-          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
-        }).join('')}</div>
-      </div>
-      <div style="margin-top:6px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">WTI 5-DAY</div>
-        <div class="spark">${sparkHtml}</div>
-      </div>
-    </div>`;
-  const ideasPanel = `<div class="g-panel lp-ideas">
-      <div class="sec-head"><h3>Leverageable Ideas</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">AI ENHANCED</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">LLM OFF</span>':'<span class="ideas-src static">PENDING</span>'}</div>
-      ${ideasHtml}
-      <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
-    </div>`;
-  const deltaPanel = `<div class="g-panel lp-delta">
-      <div class="sec-head"><h3>Sweep Delta</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?ds.direction.toUpperCase():'BASELINE'}</span></div>
-      ${hasDelta?`<div style="display:flex;gap:12px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
-        <span style="color:var(--dim)">Changes: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
-        <span style="color:var(--dim)">Critical: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
-        ${ds.signalBreakdown?`<span style="color:var(--dim)">New: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
-      </div>`:''}
-      <div class="delta-list">${deltaHtml}</div>
-    </div>`;
-
-  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}${deltaPanel}`;
-}
-
-// === RIGHT RAIL ===
-function renderRight(){
-  const mobile = isMobileLayout();
-  // CROSS-SOURCE SIGNALS — moved from lower grid to right rail
-  const signals=D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('');
-
-  // OSINT TICKER — Telegram + WHO as flowing cards
-  const signalMetrics=[
-    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
-    {l:'Air Theaters',v:D.air.length,p:60},
-    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
-    {l:'SDR Nodes',v:D.sdr.total,p:92},
-    {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
-  ];
+  const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
 
   document.getElementById('rightRail').innerHTML=`
     <div class="g-panel right-signals">
-      <div class="sec-head"><h3>Cross-Source Signals</h3><span class="badge">WORLDVIEW</span></div>
+      <div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
       ${signals}
     </div>
     ${mobile ? '' : buildOsintPanel('right-osint', 260)}
     <div class="g-panel right-core">
-      <div class="sec-head"><h3>Signal Core</h3><span class="badge">HOT METRICS</span></div>
+      <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
       ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+    </div>
+    <div class="g-panel right-delta">
+      <div class="sec-head"><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
+      ${hasDelta?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
+        <span style="color:var(--dim)">${t('delta.changes','Changes')}: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
+        <span style="color:var(--dim)">${t('delta.critical','Critical')}: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
+        ${ds.signalBreakdown?`<span style="color:var(--dim)">${t('delta.new','New')}: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
+      </div>`:''}
+      <div class="delta-list">${deltaHtml}</div>
     </div>`;
 }
 
@@ -1126,18 +1172,19 @@ function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.pr
 function runBoot(){
   const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} EVENTS</span>` : '<span style="color:var(--warn)">DEGRADED</span>';
   const lines=[
-    {text:'INITIALIZING CRUCIX ENGINE v2.1.0',delay:0},
-    {text:`CONNECTING ${D.meta.sourcesQueried} OSINT SOURCES...`,delay:400},
-    {text:'&#9500;&#9472; OPENSKY &#183; FIRMS &#183; KIWISDR &#183; MARITIME',delay:700},
-    {text:'&#9500;&#9472; FRED &#183; BLS &#183; EIA &#183; TREASURY &#183; GSCPI',delay:900},
-    {text:'&#9500;&#9472; TELEGRAM &#183; SAFECAST &#183; EPA &#183; WHO &#183; OFAC',delay:1100},
-    {text:'&#9492;&#9472; GDELT &#183; NOAA &#183; PATENTS &#183; BLUESKY &#183; REDDIT',delay:1300},
-    {text:`SWEEP COMPLETE &#8212; <span class="count">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span> SOURCES <span class="ok">OK</span>`,delay:1700},
-    {text:`ACLED CONFLICT LAYER: ${acledStatus}`,delay:1900},
-    {text:'FLIGHT CORRIDORS: <span class="ok">ACTIVE</span> &#183; DUAL PROJECTION: <span class="ok">READY</span>',delay:2100},
-    {text:'INTELLIGENCE SYNTHESIS: <span class="ok">ACTIVE</span>',delay:2400},
+    {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v2.1.0'),delay:0},
+    {text:t('boot.connecting','CONNECTING {count} OSINT SOURCES...').replace('{count}',D.meta.sourcesQueried),delay:400},
+    {text:'&#9500;&#9472; '+t('boot.sourceGroup1','OPENSKY · FIRMS · KIWISDR · MARITIME'),delay:700},
+    {text:'&#9500;&#9472; '+t('boot.sourceGroup2','FRED · BLS · EIA · TREASURY · GSCPI'),delay:900},
+    {text:'&#9500;&#9472; '+t('boot.sourceGroup3','TELEGRAM · SAFECAST · EPA · WHO · OFAC'),delay:1100},
+    {text:'&#9492;&#9472; '+t('boot.sourceGroup4','GDELT · NOAA · PATENTS · BLUESKY · REDDIT'),delay:1300},
+    {text:t('boot.sweepComplete','SWEEP COMPLETE — {ok}/{total} SOURCES').replace('{ok}',`<span class="count">${D.meta.sourcesOk}</span>`).replace('{total}',D.meta.sourcesQueried)+' <span class="ok">'+t('boot.ok','OK')+'</span>',delay:1700},
+    {text:t('boot.acledLayer','ACLED CONFLICT LAYER')+': '+acledStatus,delay:1900},
+    {text:t('boot.flightCorridors','FLIGHT CORRIDORS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span> &#183; '+t('boot.dualProjection','DUAL PROJECTION')+': <span class="ok">'+t('boot.ready','READY')+'</span>',delay:2100},
+    {text:t('boot.intelligenceSynthesis','INTELLIGENCE SYNTHESIS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span>',delay:2400},
   ];
   const container=document.getElementById('bootLines');
+  document.getElementById('bootFinal').textContent=t('dashboard.terminalActive','TERMINAL ACTIVE');
   const tl=gsap.timeline();
   tl.to('.logo-ring',{opacity:1,duration:0.6,ease:'power2.out'},0);
   tl.to(container,{opacity:1,duration:0.3},0.3);
@@ -1164,7 +1211,7 @@ function runBoot(){
       document.querySelectorAll('.mbar span,.smb span').forEach(bar=>{const w=bar.style.width;bar.style.width='0%';gsap.to(bar,{width:w,duration:1,ease:'power2.out'})});
       document.querySelectorAll('.spark-bar').forEach(bar=>{const h=bar.style.height;bar.style.height='0%';gsap.to(bar,{height:h,duration:0.8,ease:'power2.out'})});
     },1000);
-  },4.0);
+  },[],4.0);
 }
 
 function isMobileLayout(){ return window.innerWidth <= 1100; }
@@ -1183,7 +1230,7 @@ function buildOsintPanel(panelClass='', maxHeight=260){
   }).join('');
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>OSINT Stream</h3><span class="badge">${D.tg.urgent.length} URGENT</span></div>
+      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
@@ -1213,14 +1260,14 @@ function openGlossary(){
   overlay.classList.add('show');
   document.body.style.overflow = 'hidden';
 }
-window.openGlossary = openGlossary
+
 function closeGlossary(){
   const overlay = document.getElementById('glossaryOverlay');
   if(!overlay) return;
   overlay.classList.remove('show');
   document.body.style.overflow = '';
 }
-window.closeGlossary = closeGlossary
+
 function refreshMapViewport(forceGlobeReflow=false){
   const container = document.getElementById('mapContainer');
   if(!container) return;
@@ -1255,6 +1302,7 @@ function syncResponsiveLayout(force=false){
   const mobileNow = isMobileLayout();
   if(force || lastResponsiveMobile === null || mobileNow !== lastResponsiveMobile){
     lastResponsiveMobile = mobileNow;
+    renderTopbar();
     renderLeftRail();
     renderLower();
     renderRight();
