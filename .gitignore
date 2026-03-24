@@ -40,9 +40,10 @@ npm-debug.log*
 
 # Backup files
 *.bak
-
 # Local maintainer notes
 MAINTAINER_DECISIONS.local.md
 
 # Local deploy config
 dashboard/public/vercel.json
+
+.package-lock.json
