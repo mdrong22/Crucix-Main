@@ -13,9 +13,10 @@ import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
-import { generateLLMIdeas } from './lib/llm/ideas.mjs';
-import { TelegramAlerter } from './lib/alerts/telegram.mjs';
+import { generateLLMIdeas, runPortfolioBrief } from './lib/llm/ideas.mjs';
+import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -40,7 +41,8 @@ const memory = new MemoryManager(RUNS_DIR);
 
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
-const telegramAlerter = new TelegramAlerter(config.telegram);
+const snapTrade = new SnapTrade(config.snapTrade)
+const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
@@ -134,8 +136,58 @@ if (telegramAlerter.isConfigured) {
   });
 
   telegramAlerter.onCommand('/portfolio', async () => {
-    return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-  });
+    if (sweepInProgress) {
+      console.log('[Crucix] Sweep already in progress, skipping');
+      return "Sweep is in progress, please try again later";
+    }
+    console.log('[Crucix] Generating Report...')
+    telegramAlerter.sendMessage('Generating Report ...')
+    sweepInProgress = true;
+    sweepStartedAt = new Date().toISOString();
+    broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
+    console.log(`${'='.repeat(60)}`);
+
+    try {
+      // 1. Run the full briefing sweep
+      const rawData = await fullBriefing();
+
+      // 2. Save to runs/latest.json
+      writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
+      lastSweepTime = new Date().toISOString();
+
+      // 3. Synthesize into dashboard format
+      console.log('[Crucix] Synthesizing dashboard data...');
+      const synthesized = await synthesize(rawData);
+
+      // 4. Delta computation + memory
+      const delta = memory.addRun(synthesized);
+      synthesized.delta = delta;
+      const previousIdeas = memory.getLastRun()?.ideas || [];
+    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
+    if (llmProvider?.isConfigured) {
+      let result;
+      try {
+      const [accountOrders, portfolio] = await Promise.all([snapTrade.getBuyDates(),snapTrade.FetchUserTrades()]);
+      result = await runPortfolioBrief(llmProvider, synthesized, delta, previousIdeas, portfolio, accountOrders )
+      return formatToTelegramMarkdown(result.text)
+      } catch(err) {
+        console.error("Failed to get Portfolio Briefing: ", err.message, '\n', (result.text))
+        telegramAlerter.sendMessage("Failed to get Portfolio Briefing")
+      }
+      finally {
+        console.log("[Crucix] Report Created at", new Date().toISOString())
+        console.log(`${'='.repeat(60)}`)
+        sweepInProgress = false;
+      }
+    }
+  } catch (err) {
+    console.error('[Crucix] Sweep failed:', err.message);
+    broadcast({ type: 'sweep_error', error: err.message });
+  } finally {
+    sweepInProgress = false;
+  }});
 
   // Start polling for bot commands
   telegramAlerter.startPolling(config.telegram.botPollingInterval);
@@ -319,27 +371,27 @@ async function runSweepCycle() {
   console.log(`${'='.repeat(60)}`);
 
   try {
+    // Prelim: Refresh User Trades
     // 1. Run the full briefing sweep
-    const rawData = await fullBriefing();
-
+    const [rawData] = await Promise.all([fullBriefing(), snapTrade.RefreshHoldings()])
     // 2. Save to runs/latest.json
     writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
     lastSweepTime = new Date().toISOString();
 
     // 3. Synthesize into dashboard format
     console.log('[Crucix] Synthesizing dashboard data...');
-    const synthesized = await synthesize(rawData);
+    const [synthesized, userPortfolio, accountOrders ]= await Promise.all([synthesize(rawData), snapTrade.FetchUserTrades(), snapTrade.getBuyDates()]);
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
-
     // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
     if (llmProvider?.isConfigured) {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
+        
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
+        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders);
         if (llmIdeas) {
           synthesized.ideas = llmIdeas;
           synthesized.ideasSource = 'llm';
@@ -396,22 +448,23 @@ async function runSweepCycle() {
 // === Startup ===
 async function start() {
   const port = config.port;
-
+  const HOST = '0.0.0.0'
   console.log(`
   ╔══════════════════════════════════════════════╗
   ║           CRUCIX INTELLIGENCE ENGINE         ║
   ║          Local Palantir · 26 Sources         ║
   ╠══════════════════════════════════════════════╣
-  ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║
+  ║  Dashboard:  http://localhost:${port}${' '.repeat(15 - String(port).length)}║
   ║  Health:     http://localhost:${port}/api/health${' '.repeat(4 - String(port).length)}║
-  ║  Refresh:    Every ${config.refreshIntervalMinutes} min${' '.repeat(20 - String(config.refreshIntervalMinutes).length)}║
-  ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(31)}║
-  ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 24 : 23)}║
-  ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 23)}║
+  ║  Refresh:    Every ${config.refreshIntervalMinutes} min${' '.repeat(22 - String(config.refreshIntervalMinutes).length)}║
+  ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(32)}║
+  ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 25 : 24)}║
+  ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 24)}║
+  ║  SnapTrader: ${config.snapTrade?.accountId ? 'enabled' : 'disabled'}${' '.repeat(config.snapTrade.accountId ? 25 : 24)}║
   ╚══════════════════════════════════════════════╝
   `);
 
-  const server = app.listen(port);
+  const server = app.listen(port, HOST);
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {

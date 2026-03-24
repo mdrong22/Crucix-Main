@@ -23,8 +23,17 @@ export default {
   discord: {
     botToken: process.env.DISCORD_BOT_TOKEN || null,
     channelId: process.env.DISCORD_CHANNEL_ID || null,
-    guildId: process.env.DISCORD_GUILD_ID || null, // Server ID (for instant slash command registration)
+    guildId: process.env.DISCORD_GUILD_ID || null,   // Server ID (for instant slash command registration)
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || null, // Fallback: webhook-only alerts (no bot needed)
+  },
+
+  snapTrade: {
+    clientId: process.env.SNAPTRADE_CLIENT_ID || null,
+    consumerKey: process.env.SNAPTRADE_CONSUMER_KEY || null ,
+    userId: process.env.SNAPTRADE_USER_ID || null,
+    userSecret: process.env.SNAPTRADE_USER_SECRET || null, 
+    accountId: process.env.SNAPTRADE_ACCOUNT_ID || null,
+    authId: process.env.SNAPTRADE_AUTH_ID || null 
   },
 
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs
