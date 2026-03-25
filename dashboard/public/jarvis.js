@@ -1015,7 +1015,8 @@ function renderLower(){
   const indexCards = (mkt.indexes||[]).map(mktCard).join('');
   const cryptoCards = (mkt.crypto||[]).map(mktCard).join('');
   const rateCards = (mkt.rates||[]).map(mktCard).join('');
-  const hasMarkets = indexCards || cryptoCards;
+  const commodityCards = (mkt.commodities || []).map(mktCard).join('');
+  const hasMarkets = indexCards || cryptoCards || commodityCards;
 
   const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
 
@@ -1081,6 +1082,10 @@ function renderLower(){
       <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
         <div class="metrics-row">${cryptoCards}</div>
+      </div>
+       <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">COMMODITIES</div>
+        <div class="metrics-row">${commodityCards}</div>
       </div>`:''}
       <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
