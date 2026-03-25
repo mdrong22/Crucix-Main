@@ -218,6 +218,20 @@ function renderTopbar(){
     </div>
     ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
+
+      <a href="redline.html" style="
+        padding:5px 14px;
+        font-family:'IBM Plex Mono',monospace;
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:0.1em;
+        text-transform:uppercase;
+        text-decoration:none;
+        border:1px solid rgba(255,34,68,0.35);
+        color:rgba(255,100,120,0.85);
+        background:rgba(255,34,68,0.08);
+      ">⬛ REDLINE</a>
+
       <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
       <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
