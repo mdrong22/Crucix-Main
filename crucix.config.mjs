@@ -33,7 +33,8 @@ export default {
     userId: process.env.SNAPTRADE_USER_ID || null,
     userSecret: process.env.SNAPTRADE_USER_SECRET || null, 
     accountId: process.env.SNAPTRADE_ACCOUNT_ID || null,
-    authId: process.env.SNAPTRADE_AUTH_ID || null 
+    authId: process.env.SNAPTRADE_AUTH_ID || null ,
+    alpaca_accountId: process.env.SNAPTRADE_ALPACA_PAPER_ACC_ID || null,
   },
 
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs

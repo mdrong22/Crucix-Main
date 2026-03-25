@@ -19,6 +19,9 @@
   --red-glow:rgba(255,34,68,0.45);
   --red-border:rgba(255,34,68,0.22);
   --red-bright:rgba(255,34,68,0.5);
+  --crucix-greener:#5ff9ce;
+  --crucix-green: #64f0c8;
+  --crucix-dim: #3b8a73;
   --orange:#ff6b35;
   --gold:#ffcc00;
   --green:#39ff6e;
@@ -57,10 +60,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,var(--red),transparent);opacity:0.4}
 .tb-left{display:flex;align-items:center;gap:12px}
-.back-btn{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--red-border);
-  background:var(--red-dim);color:rgba(255,140,160,0.7);font-family:var(--mono);font-size:10px;
+.back-btn{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--crucix-greener);
+  background:var(--crucix-dim);color:var(--crucix-green);font-family:var(--mono);font-size:10px;
   letter-spacing:0.08em;text-decoration:none;text-transform:uppercase;transition:all 0.2s}
-.back-btn:hover{border-color:var(--red-bright);color:var(--text);background:rgba(255,34,68,0.2)}
+.back-btn:hover{border-color:var(--crucix-greener);color:var(--text);background:var(--crucix-green)}
 .brand-sep{color:rgba(255,34,68,0.3);font-family:var(--mono);font-size:14px;margin:0 2px}
 .brand-rl{font-family:var(--orb);font-size:14px;font-weight:800;letter-spacing:0.18em;color:var(--red);
   text-shadow:0 0 20px var(--red-glow),0 0 40px rgba(255,34,68,0.2)}
@@ -290,7 +293,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       <!-- PORTFOLIO HEADER -->
       <div class="pf-header">
         <div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
-        <div class="pf-watermark">REDLINE</div>
+        <div class="pf-watermark">PROJECT REDLINE</div>
         <div class="pf-top">
           <div>
             <div class="pf-eyebrow">TOTAL PORTFOLIO VALUE</div>
