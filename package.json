@@ -27,7 +27,8 @@
     "npm": ">=10"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "snaptrade-typescript-sdk": "^9.0.173"
   },
   "optionalDependencies": {
     "discord.js": "^14.25.1"

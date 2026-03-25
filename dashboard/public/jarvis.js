@@ -1391,3 +1391,12 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
   }
 });
+
+window.toggleFlights = toggleFlights
+window.toggleMapMode = toggleMapMode
+window.togglePerfMode = togglePerfMode
+window.mapZoom = mapZoom
+window.setRegion = setRegion
+window.openGlossary = openGlossary
+window.closeGlossary = closeGlossary
+window.closePopup = closePopup
