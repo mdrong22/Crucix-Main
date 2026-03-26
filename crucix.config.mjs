@@ -39,19 +39,19 @@ export default {
   phi: {
     apiKey: process.env.GROQ_API_KEY || null,
     model: process.env.GROQ_MODEL || null,
-    baseUrl: process.env.GROQ_BASE_URL
+    baseUrl: process.env.GROQ_BASE_URL || null
   },
 
   scout: {
     apiKey: process.env.SCOUT_API_KEY || null,
     model: process.env.SCOUT_LLM_MODEL || null,
-    baseUrl: process.env.SCOUT_BASE_URL || null,
+    baseUrl: process.env.GEMINI_BASE_URL || null,
   },
 
   theta: {
-    apiKey: process.env.GEMINI_API_KEY,
-    model: process.env.GEMINI_MODEL,
-    baseUrl: process.env.GEMINI_BASE_URL
+    apiKey: process.env.THETA_API_KEY,
+    model: process.env.THETA_MODEL,
+    baseUrl: process.env.THETA_BASE_URL
   },
 
   omega: {

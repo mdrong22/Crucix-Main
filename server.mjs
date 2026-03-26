@@ -22,6 +22,9 @@ import { ScribePrompt } from './lib/llm/council/utils/prompts.mjs';
 import { generateLocalReport } from './lib/llm/council/utils/generateReport.mjs';
 import { Debate } from './lib/alerts/debate.mjs';
 import { CouncilAgent } from './lib/llm/council/councilAgent.mjs';
+import { PhiLLM } from './lib/llm/council/phi.mjs';
+import { ThetaLLM } from './lib/llm/council/theta.mjs';
+import { GregorLLM } from './lib/llm/council/omega.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -50,9 +53,9 @@ const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
 const scout = new ScoutLLM(config.scout || {});
-const bull = new CouncilAgent("Phi", config.phi)
-const bear = new CouncilAgent("Theta", config.theta)
-const omega = new CouncilAgent("Gregor", config.omega)
+const bull = new PhiLLM(config.phi || {})
+const bear = new ThetaLLM(config.theta)
+const omega = new GregorLLM(config.omega)
 const debate = new Debate(bull, bear, omega)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
@@ -459,7 +462,8 @@ async function runPortfolio() {
 }
 
 async function CheckDebateCycle() {
-    const result = await scout.assessInfo(currentData, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings, lastSweepTime);
+    const result = await scout.assessInfo(currentData, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings);
+    if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
         return; // Exit the function here
@@ -474,6 +478,9 @@ async function CheckDebateCycle() {
         const scribe = new GeminiProvider(config.scout)
         const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
         await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
+    }
+    else {
+      console.log(`${'='.repeat(60)}`)
     }
 }
 
