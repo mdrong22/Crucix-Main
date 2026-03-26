@@ -12,11 +12,14 @@ import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs'
 import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
-import { createLLMProvider } from './lib/llm/index.mjs';
+import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas, runPortfolioBrief } from './lib/llm/ideas.mjs';
 import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
+import { ScoutLLM } from './lib/llm/council/scout.mjs';
+import { ScribePrompt } from './lib/llm/council/utils/prompts.mjs';
+import { generateLocalReport } from './lib/llm/council/utils/generateReport.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -44,6 +47,7 @@ const llmProvider = createLLMProvider(config.llm);
 const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
+const scout = new ScoutLLM(config.scout || {});
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -388,6 +392,7 @@ async function runSweepCycle() {
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
+    CheckDebateCycle()
 
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
@@ -445,6 +450,24 @@ async function runPortfolioBrief() {
 } finally {
   sweepInProgress = false;
 }
+}
+
+async function CheckDebateCycle() {
+    if (result.toUpperCase().includes("QUIET")) {
+        console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
+        return; // Exit the function here
+    }
+
+    console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
+    const trade = await debate.beginDebate(result, portfolio, holdings);
+
+    if (trade.action !== "WAIT") {
+        const orderRes = await snapTrade.PlaceOrder(trade);
+        console.log("[REDLINE] Order Executed ✅:", orderRes.data);
+        const scribe = new GeminiProvider(config.scout)
+        const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
+        await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
+    }
 }
 
 // === Startup ===
