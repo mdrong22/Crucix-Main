@@ -20,6 +20,8 @@ import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 import { ScoutLLM } from './lib/llm/council/scout.mjs';
 import { ScribePrompt } from './lib/llm/council/utils/prompts.mjs';
 import { generateLocalReport } from './lib/llm/council/utils/generateReport.mjs';
+import { Debate } from './lib/alerts/debate.mjs';
+import { CouncilAgent } from './lib/llm/council/councilAgent.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -48,6 +50,10 @@ const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
 const scout = new ScoutLLM(config.scout || {});
+const bull = new CouncilAgent("Phi", config.phi)
+const bear = new CouncilAgent("Theta", config.theta)
+const omega = new CouncilAgent("Gregor", config.omega)
+const debate = new Debate(bull, bear, omega)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -141,7 +147,7 @@ if (telegramAlerter.isConfigured) {
 
   telegramAlerter.onCommand('/portfolio', async () => {
     if (sweepInProgress) {console.log('[Crucix] Sweep already in progress, skipping'); return '🔄 Sweep already in progress. Please wait.'};
-    const res = await runPortfolioBrief().catch(err => {telegramAlerter.sendMessage("Failed to get Portfolio Briefing"); console.error('[Crucix] Manual sweep failed:', err.message)});
+    const res = await runPortfolio().catch(err => {telegramAlerter.sendMessage("Failed to get Portfolio Briefing"); console.error('[Crucix] Manual sweep failed:', err.message)});
     return formatToTelegramMarkdown(res)
     });
 
@@ -402,7 +408,7 @@ async function runSweepCycle() {
   }
 }
 
-async function runPortfolioBrief() {
+async function runPortfolio() {
   console.log('[Crucix] Generating Report...')
   telegramAlerter.sendMessage('Generating Report ...')
   sweepInProgress = true;
@@ -453,13 +459,14 @@ async function runPortfolioBrief() {
 }
 
 async function CheckDebateCycle() {
+    const result = await scout.assessInfo(currentData, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings, lastSweepTime);
     if (result.toUpperCase().includes("QUIET")) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
         return; // Exit the function here
     }
 
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-    const trade = await debate.beginDebate(result, portfolio, holdings);
+    const trade = await debate.beginDebate(result, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings);
 
     if (trade.action !== "WAIT") {
         const orderRes = await snapTrade.PlaceOrder(trade);
