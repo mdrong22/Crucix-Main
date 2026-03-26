@@ -27,6 +27,7 @@
     "npm": ">=10"
   },
   "dependencies": {
+    "@heyputer/puter.js": "^2.2.14",
     "express": "^5.1.0",
     "snaptrade-typescript-sdk": "^9.0.173"
   },
