@@ -479,9 +479,9 @@ async function CheckDebateCycle() {
         const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
         await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
     }
-    else {
-      console.log(`${'='.repeat(60)}`)
-    }
+    
+    console.log(`${'='.repeat(60)}`)
+    
 }
 
 // === Startup ===
