@@ -21,7 +21,6 @@ import { ScoutLLM } from './lib/llm/council/scout.mjs';
 import { ScribePrompt } from './lib/llm/council/utils/prompts.mjs';
 import { generateLocalReport } from './lib/llm/council/utils/generateReport.mjs';
 import { Debate } from './lib/alerts/debate.mjs';
-import { CouncilAgent } from './lib/llm/council/councilAgent.mjs';
 import { PhiLLM } from './lib/llm/council/phi.mjs';
 import { ThetaLLM } from './lib/llm/council/theta.mjs';
 import { GregorLLM } from './lib/llm/council/omega.mjs';
@@ -56,7 +55,7 @@ const scout = new ScoutLLM(config.scout || {});
 const bull = new PhiLLM(config.phi || {})
 const bear = new ThetaLLM(config.theta)
 const omega = new GregorLLM(config.omega)
-const debate = new Debate(bull, bear, omega)
+const debate = new Debate(bull, bear, omega, snapTrade)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -470,7 +469,7 @@ async function CheckDebateCycle() {
     }
 
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-    const trade = await debate.beginDebate(result, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings);
+    const trade = await debate.beginDebate(result);
 
     if (trade.action !== "WAIT") {
         const orderRes = await snapTrade.PlaceOrder(trade);
