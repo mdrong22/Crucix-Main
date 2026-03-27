@@ -10,7 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
+import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas, runPortfolioBrief } from './lib/llm/ideas.mjs';
@@ -301,6 +301,17 @@ app.get('/api/locales', (req, res) => {
     supported: getSupportedLocales(),
   });
 });
+
+app.get('/api/redline', (req, res) => {
+  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const d = {
+    accountOrders24h: snapTrade.GetOrders24h(),
+    accountTotalValue: snapTrade.GetAccountTotalValue(),
+    currentPortfolio: snapTrade.GetCurrentPortfolio(),
+    accountCurrentHoldings: snapTrade.GetCurrentAcccountHoldings()
+  }
+  res.json(d)
+})
 
 // SSE: live updates
 app.get('/events', (req, res) => {
