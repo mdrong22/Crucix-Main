@@ -40,6 +40,7 @@ let currentData = null;    // Current synthesized dashboard data
 let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
+let currentContext = null
 const startTime = Date.now();
 const sseClients = new Set();
 
@@ -355,7 +356,8 @@ async function runSweepCycle() {
         console.log('[Crucix] Generating LLM trade ideas...');
         
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders);
+        const {llmIdeas, context} = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders);
+        currentContext = context
         if (llmIdeas) {
           synthesized.ideas = llmIdeas;
           synthesized.ideasSource = 'llm';
@@ -400,7 +402,7 @@ async function runSweepCycle() {
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
-    CheckDebateCycle()
+    CheckDebateCycle(currentContext || [])
 
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
@@ -460,8 +462,8 @@ async function runPortfolio() {
 }
 }
 
-async function CheckDebateCycle() {
-    const result = await scout.assessInfo(currentData, snapTrade.GetCurrentPortfolio, snapTrade.GetCurrentAcccountHoldings);
+async function CheckDebateCycle(context) {
+    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings());
     if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
@@ -469,7 +471,7 @@ async function CheckDebateCycle() {
     }
 
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-    const trade = await debate.beginDebate(result);
+    const trade = await debate.beginDebate(result, context);
 
     if (trade.action !== "WAIT") {
         const orderRes = await snapTrade.PlaceOrder(trade);
