@@ -125,3 +125,24 @@ export async function collect() {
 function pickGroup(quotes, symbols) {
   return symbols.map(s => quotes[s]).filter(Boolean);
 }
+
+export async function GetLiveQuote(ticker) {
+  const data = await fetchQuote(ticker);
+  
+  if (!data || data.error) {
+    throw new Error(data?.error || `Failed to fetch live quote for ${ticker}`);
+  }
+
+  // Map to the format your Debate.mjs expects
+  return {
+    price: data.price,
+    prevClose: data.prevClose,
+    changePct: data.changePct,
+    marketState: data.marketState,
+    // Note: the chart API doesn't always provide real-time Bid/Ask, 
+    // so we use price as a fallback to keep the Council happy.
+    bid: data.price, 
+    ask: data.price,
+    volume: data.history?.[data.history.length - 1]?.volume || 0
+  };
+}

@@ -24,6 +24,7 @@ import { Debate } from './lib/alerts/debate.mjs';
 import { PhiLLM } from './lib/llm/council/phi.mjs';
 import { ThetaLLM } from './lib/llm/council/theta.mjs';
 import { GregorLLM } from './lib/llm/council/omega.mjs';
+import { Snaptrade } from 'snaptrade-typescript-sdk';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -53,11 +54,12 @@ const llmProvider = createLLMProvider(config.llm);
 const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
-const scout = new ScoutLLM(config.scout || {});
+const getLiveQuote = snapTrade.GetLiveQuote.bind(snapTrade);
+const scout = new ScoutLLM(config.scout, getLiveQuote);
 const bull = new PhiLLM(config.phi || {})
 const bear = new ThetaLLM(config.theta)
 const omega = new GregorLLM(config.omega)
-const debate = new Debate(bull, bear, omega, snapTrade)
+const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -476,7 +478,8 @@ async function runPortfolio() {
 }
 
 async function CheckDebateCycle(context) {
-    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision);
+    const buyingPower = await snapTrade.FetchAccountBuyingPower()
+    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
     
     if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
@@ -492,13 +495,19 @@ async function CheckDebateCycle(context) {
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
     const trade = await debate.beginDebate(result, context);
     if (trade.action !== "WAIT") {
-        const orderRes = await snapTrade.PlaceOrder(trade);
-        console.log("[REDLINE] Order Executed ✅:", orderRes.data);
-        telegramAlerter.sendAlert(`${trade.action} ${trade.units} units of ${trade.symbol} at $${trade.price}`)
-        const scribe = new GeminiProvider(config.scout)
-        const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
-        await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
+    const orderRes = await snapTrade.PlaceOrder(trade);
+    
+    if (!orderRes) {
+        console.error("[REDLINE] ❌ Order failed — PlaceOrder returned null. Check logs above.");
+        return;
     }
+    
+    console.log("[REDLINE] Order Executed ✅:", orderRes);
+    telegramAlerter.sendAlert(`${trade.action} ${trade.units} units of ${trade.symbol} at $${trade.price}`)
+    const scribe = new GeminiProvider(config.scout)
+    const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
+    await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
+}
     
     console.log(`${'='.repeat(60)}`)
     
