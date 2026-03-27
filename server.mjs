@@ -402,7 +402,7 @@ async function runSweepCycle() {
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
-    CheckDebateCycle(currentContext || [])
+    await CheckDebateCycle(currentContext || [])
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
 
@@ -480,10 +480,10 @@ async function CheckDebateCycle(context) {
     }
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
     const trade = await debate.beginDebate(result, context);
-    console.log('Decided Trade Data: ',trade)
     if (trade.action !== "WAIT") {
         const orderRes = await snapTrade.PlaceOrder(trade);
         console.log("[REDLINE] Order Executed ✅:", orderRes.data);
+        telegramAlerter.sendAlert(`${trade.action} ${trade.units} units of ${trade.symbol} at $${trade.price}`)
         const scribe = new GeminiProvider(config.scout)
         const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
         await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
