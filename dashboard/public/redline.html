@@ -649,60 +649,44 @@ async function loadAll(manual = false) {
   setStatus('loading', manual ? 'REFRESHING...' : 'CONNECTING...');
 
   try {
-    // Fetch both endpoints in parallel
-    const [redlineRes, dataRes] = await Promise.allSettled([
-      fetch('/api/redline').then(r => { if (!r.ok) throw new Error('redline ' + r.status); return r.json(); }),
-      fetch('/api/data').then(r => { if (!r.ok) throw new Error('data ' + r.status); return r.json(); }),
-    ]);
+    const res = await fetch('/api/redline');
+    if (!res.ok) throw new Error(`/api/redline returned ${res.status}`);
+    const d = await res.json();
 
-    const redline = redlineRes.status === 'fulfilled' ? redlineRes.value : null;
-    const crucixData = dataRes.status === 'fulfilled' ? dataRes.value : null;
-
-    if (!redline && !crucixData) throw new Error('Both endpoints failed');
-    if (redlineRes.status === 'rejected') showError('SnapTrade unavailable: ' + redlineRes.reason?.message);
-    if (dataRes.status === 'rejected') showError('Market data unavailable: ' + dataRes.reason?.message);
-
-    // Parse SnapTrade data
+    // ── Parse portfolio positions ──────────────────────────────────────────
     let positions = [];
+    try {
+      const raw = typeof d.currentPortfolio === 'string'
+        ? JSON.parse(d.currentPortfolio)
+        : d.currentPortfolio;
+      positions = Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      showError('Failed to parse portfolio: ' + e.message);
+    }
+
+    // ── Parse orders ───────────────────────────────────────────────────────
     let ordersData = { orders: [] };
-    let totalValue = null;
-
-    if (redline) {
-      // currentPortfolio is a JSON string from SnapTrade.GetCurrentPortfolio()
-      try {
-        const raw = typeof redline.currentPortfolio === 'string'
-          ? JSON.parse(redline.currentPortfolio)
-          : redline.currentPortfolio;
-        positions = Array.isArray(raw) ? raw : [];
-      } catch (e) {
-        positions = [];
-        showError('Failed to parse portfolio: ' + e.message);
-      }
-
-      try {
-        const raw = typeof redline.accountOrders24h === 'string'
-          ? JSON.parse(redline.accountOrders24h)
-          : redline.accountOrders24h;
-        ordersData = raw || { orders: [] };
-      } catch (e) {
-        ordersData = { orders: [] };
-      }
-
-      totalValue = redline.accountTotalValue ?? null;
+    try {
+      const raw = typeof d.accountOrders24h === 'string'
+        ? JSON.parse(d.accountOrders24h)
+        : d.accountOrders24h;
+      ordersData = raw || { orders: [] };
+    } catch (e) {
+      ordersData = { orders: [] };
     }
 
-    // Parse yFinance quotes from /api/data
-    let quotes = null;
-    if (crucixData) {
-      const yf = crucixData.yfinance || crucixData.market;
-      quotes = yf?.quotes || null;
-    }
+    // ── Market quotes (yfinance) ───────────────────────────────────────────
+    // Shape: { SPY: { symbol, name, price, changePct, history }, QQQ: {...}, ... }
+    const quotes = d.yfinance?.quotes ?? null;
 
-    // Buying power
-    const bp = redline?.buyingPower ?? null;
+    // ── Buying power ───────────────────────────────────────────────────────
+    const bp = d.buyingPower ?? null;
     document.getElementById('buyingPwr').textContent = bp != null ? '$' + fmt(bp, 0) : '—';
 
-    // Build all UI
+    // ── Total value ────────────────────────────────────────────────────────
+    const totalValue = d.accountTotalValue ?? null;
+
+    // ── Build all UI panels ────────────────────────────────────────────────
     buildTicker(quotes);
     buildMarket(quotes);
     buildPortfolioHeader(positions, totalValue);
@@ -713,7 +697,9 @@ async function loadAll(manual = false) {
 
     // Timestamp
     document.getElementById('lastUpdated').textContent =
-      'LAST UPDATED: ' + new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      'LAST UPDATED: ' + new Date().toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
 
     setStatus('live', 'MARKET OPEN · LIVE DATA');
     document.getElementById('errorBanner').classList.remove('show');
@@ -726,6 +712,7 @@ async function loadAll(manual = false) {
     refreshBtn.disabled = false;
   }
 }
+
 
 // ── INIT + AUTO-REFRESH (every 5 min)
 loadAll();

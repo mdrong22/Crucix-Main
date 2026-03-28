@@ -305,15 +305,38 @@ app.get('/api/locales', (req, res) => {
 });
 
 app.get('/api/redline', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  const d = {
-    accountOrders24h: snapTrade.GetOrders24h(),
-    accountTotalValue: snapTrade.GetAccountTotalValue(),
-    currentPortfolio: snapTrade.GetCurrentPortfolio(),
-    accountCurrentHoldings: snapTrade.GetCurrentAcccountHoldings()
+  if (!currentData) {
+    return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   }
-  res.json(d)
-})
+  // ── SnapTrade cached values (all sync — set during sweep) ─────────────────
+  const rawOrders = snapTrade.GetOrders24h();
+  // Normalize orders shape — SnapTrade SDK can return an array directly
+  // or an object like { orders: [] } depending on the endpoint version
+  const orders = Array.isArray(rawOrders)
+    ? rawOrders
+    : Array.isArray(rawOrders?.orders)
+      ? rawOrders.orders
+      : [];
+  // ── yFinance quotes — pulled from currentData set during sweep ───────────
+  // Shape from yfinance.mjs: currentData.yfinance.quotes = { SPY: {...}, QQQ: {...} }
+  // Frontend buildMarket() and buildTicker() both expect this quotes object
+  const yfinanceQuotes = currentData?.yfinance?.quotes ?? null;
+
+  res.json({
+    // Account data
+    currentPortfolio:       snapTrade.GetCurrentPortfolio(),       // JSON string → frontend parses
+    accountCurrentHoldings: snapTrade.GetCurrentAcccountHoldings(),
+    accountOrders24h:       { orders },                            // normalized to { orders: [] }
+    accountTotalValue:      snapTrade.GetAccountTotalValue(),
+    buyingPower:            snapTrade.currentBuyingPower ?? null,  // cached number, not async call
+
+    // Market data — feeds buildMarket() and buildTicker()
+    // Frontend reads: crucixData.yfinance?.quotes
+    yfinance: {
+      quotes: yfinanceQuotes,
+    },
+  });
+});
 
 // SSE: live updates
 app.get('/events', (req, res) => {
