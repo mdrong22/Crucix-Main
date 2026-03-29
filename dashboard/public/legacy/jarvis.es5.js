@@ -17,7 +17,6 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
 function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t["return"] || t["return"](); } finally { if (u) throw o; } } }; }
 function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
-// === DATA ===
 var D = null;
 
 // === I18N ===
@@ -251,7 +250,7 @@ function renderTopbar() {
     minute: '2-digit',
     hour12: true
   });
-  document.getElementById('topbar').innerHTML = "\n    <div class=\"top-left\">\n      <span class=\"brand\">CRUCIX MONITOR</span>\n      <span class=\"regime-chip\"><span class=\"blink\"></span>WARTIME STAGFLATION RISK</span>\n    </div>\n    ".concat(mobile ? "<div class=\"top-center\">".concat(getRegionControlsMarkup(), "</div>") : '', "\n    <div class=\"top-right\">\n      <button class=\"meta-pill perf-pill\" onclick=\"togglePerfMode()\" title=\"Reduce visual effects and start mobile in flat mode\">").concat(t('dashboard.visuals', 'VISUALS'), " <span class=\"v\" id=\"perfStatus\">").concat(lowPerfMode ? t('dashboard.visualsLite', 'LITE') : t('dashboard.visualsFull', 'FULL'), "</span></button>\n      <span class=\"meta-pill\">").concat(t('dashboard.sweep', 'SWEEP'), " <span class=\"v\">").concat((D.meta.totalDurationMs / 1000).toFixed(1), "s</span></span>\n      <span class=\"meta-pill\">").concat(d, " <span class=\"v\">").concat(timeStr, "</span></span>\n      <span class=\"meta-pill\">").concat(t('dashboard.sources', 'SOURCES'), " <span class=\"v\">").concat(D.meta.sourcesOk, "/").concat(D.meta.sourcesQueried, "</span></span>\n      ").concat((_D$delta = D.delta) !== null && _D$delta !== void 0 && _D$delta.summary ? "<span class=\"meta-pill\">".concat(t('dashboard.delta', 'DELTA'), " <span class=\"v\">").concat(D.delta.summary.direction === 'risk-off' ? '&#x25B2; ' + t('dashboard.riskOff', 'RISK-OFF') : D.delta.summary.direction === 'risk-on' ? '&#x25BC; ' + t('dashboard.riskOn', 'RISK-ON') : '&#x25C6; ' + t('dashboard.mixed', 'MIXED'), "</span></span>") : '', "\n      <button class=\"guide-btn\" onclick=\"openGlossary()\">").concat(t('dashboard.guideBtn', 'What Signals Mean'), "</button>\n      <span class=\"alert-badge\">").concat(t('dashboard.highAlert', 'HIGH ALERT'), "</span>\n    </div>");
+  document.getElementById('topbar').innerHTML = "\n    <div class=\"top-left\">\n      <span class=\"brand\">CRUCIX MONITOR</span>\n      <span class=\"regime-chip\"><span class=\"blink\"></span>WARTIME STAGFLATION RISK</span>\n    </div>\n    ".concat(mobile ? "<div class=\"top-center\">".concat(getRegionControlsMarkup(), "</div>") : '', "\n    <div class=\"top-right\">\n         <button class=\"meta-pill perf-pill\" onclick=\"togglePerfMode()\" title=\"Reduce visual effects and start mobile in flat mode\">").concat(t('dashboard.visuals', 'VISUALS'), " <span class=\"v\" id=\"perfStatus\">").concat(lowPerfMode ? t('dashboard.visualsLite', 'LITE') : t('dashboard.visualsFull', 'FULL'), "</span></button>\n      <span class=\"meta-pill\">").concat(t('dashboard.sweep', 'SWEEP'), " <span class=\"v\">").concat((D.meta.totalDurationMs / 1000).toFixed(1), "s</span></span>\n      <span class=\"meta-pill\">").concat(d, " <span class=\"v\">").concat(timeStr, "</span></span>\n      <span class=\"meta-pill\">").concat(t('dashboard.sources', 'SOURCES'), " <span class=\"v\">").concat(D.meta.sourcesOk, "/").concat(D.meta.sourcesQueried, "</span></span>\n      ").concat((_D$delta = D.delta) !== null && _D$delta !== void 0 && _D$delta.summary ? "<span class=\"meta-pill\">".concat(t('dashboard.delta', 'DELTA'), " <span class=\"v\">").concat(D.delta.summary.direction === 'risk-off' ? '&#x25B2; ' + t('dashboard.riskOff', 'RISK-OFF') : D.delta.summary.direction === 'risk-on' ? '&#x25BC; ' + t('dashboard.riskOn', 'RISK-ON') : '&#x25C6; ' + t('dashboard.mixed', 'MIXED'), "</span></span>") : '', "\n      <button class=\"guide-btn\" onclick=\"openGlossary()\">").concat(t('dashboard.guideBtn', 'What Signals Mean'), "</button>\n      <span class=\"alert-badge\">").concat(t('dashboard.highAlert', 'HIGH ALERT'), "</span>\n    </div>");
   renderRegionControls();
 }
 
@@ -1640,7 +1639,7 @@ function mkSparkSvg(values, isGood) {
 
 // === LOWER GRID ===
 function renderLower() {
-  var _cpi$momChangePct;
+  var _D$energy, _D$energy2, _D$energy3, _cpi$momChangePct, _metals$goldChangePct, _metals$silverChangeP;
   var mobile = isMobileLayout();
   var spread = D.fred.find(function (f) {
     return f.id === 'T10Y2Y';
@@ -1659,6 +1658,7 @@ function renderLower() {
   });
   var gscpi = D.gscpi;
   var mkt = D.markets || {};
+  var metals = D.metals || {};
   var wtiH = D.energy.wtiRecent || [];
   var wtiMax = Math.max.apply(Math, _toConsumableArray(wtiH)),
     wtiMin = Math.min.apply(Math, _toConsumableArray(wtiH));
@@ -1682,19 +1682,27 @@ function renderLower() {
   });
   var vixVal = (vixLive === null || vixLive === void 0 ? void 0 : vixLive.value) || (vixFred === null || vixFred === void 0 ? void 0 : vixFred.value);
   var vixChg = (vixLive === null || vixLive === void 0 ? void 0 : vixLive.changePct) != null ? "".concat(vixLive.changePct >= 0 ? '+' : '').concat(vixLive.changePct, "%") : '';
+  var fmtMarketPrice = function fmtMarketPrice(price) {
+    return price != null ? "$".concat(price.toLocaleString(undefined, {
+      maximumFractionDigits: 2
+    })) : '--';
+  };
+  var dayMove = function dayMove(pct) {
+    return pct != null ? "".concat(pct >= 0 ? '+' : '').concat(pct, "% today") : '';
+  };
   var metrics = [{
     l: 'WTI Crude',
-    v: "$".concat(D.energy.wti),
+    v: "$".concat((_D$energy = D.energy) === null || _D$energy === void 0 ? void 0 : _D$energy.wti),
     s: '$/bbl',
     p: 70
   }, {
     l: 'Brent',
-    v: "$".concat(D.energy.brent),
+    v: "$".concat((_D$energy2 = D.energy) === null || _D$energy2 === void 0 ? void 0 : _D$energy2.brent),
     s: '$/bbl',
     p: 75
   }, {
     l: 'Nat Gas',
-    v: "$".concat(D.energy.natgas || '--'),
+    v: "$".concat(((_D$energy3 = D.energy) === null || _D$energy3 === void 0 ? void 0 : _D$energy3.natgas) || '--'),
     s: '$/MMBtu',
     p: 30
   }, {
@@ -1723,6 +1731,17 @@ function renderLower() {
     s: ue ? "".concat(ue.momChange > 0 ? '+' : '').concat(ue.momChange, " vs prior") : '',
     p: 44
   }];
+  var metalsMetrics = [{
+    l: 'Gold',
+    v: fmtMarketPrice(metals.gold),
+    s: dayMove(metals.goldChangePct) || 'COMEX proxy',
+    p: 58
+  }, {
+    l: 'Silver',
+    v: fmtMarketPrice(metals.silver),
+    s: dayMove(metals.silverChangePct) || 'COMEX proxy',
+    p: 54
+  }];
 
   // Attach sparklines from FRED recent data
   var fredSpark = function fredSpark(id, up) {
@@ -1735,9 +1754,13 @@ function renderLower() {
       sparkUp: up
     } : {};
   };
-  metrics[0] = _objectSpread(_objectSpread({}, metrics[0]), {}, {
-    spark: D.energy.wtiRecent,
-    sparkUp: false
+  metalsMetrics[0] = _objectSpread(_objectSpread({}, metalsMetrics[0]), {}, {
+    spark: metals.goldRecent,
+    sparkUp: ((_metals$goldChangePct = metals.goldChangePct) !== null && _metals$goldChangePct !== void 0 ? _metals$goldChangePct : 0) >= 0
+  });
+  metalsMetrics[1] = _objectSpread(_objectSpread({}, metalsMetrics[1]), {}, {
+    spark: metals.silverRecent,
+    sparkUp: ((_metals$silverChangeP = metals.silverChangePct) !== null && _metals$silverChangeP !== void 0 ? _metals$silverChangeP : 0) >= 0
   });
 
   // Build live market cards from Yahoo Finance
@@ -1784,7 +1807,10 @@ function renderLower() {
   }).join('') : "<div style=\"padding:20px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px\">\n      <div style=\"font-size:24px;margin-bottom:8px;opacity:0.3\">&#9888;</div>\n      <div>LLM NOT CONFIGURED</div>\n      <div style=\"font-size:9px;margin-top:6px;opacity:0.6\">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>\n    </div>";
   var tickerPanel = "<div class=\"g-panel lp-ticker\" style=\"display:flex;flex-direction:column\">\n      <div class=\"sec-head\"><h3>".concat(t('panels.newsTicker', 'Live News Ticker'), "</h3><span class=\"badge\">").concat(feed.length, " ").concat(t('badges.items', 'ITEMS'), "</span></div>\n      <div class=\"ticker-wrap\" style=\"--ticker-duration:").concat(tickerDuration, "s\">\n        <div class=\"ticker-track\">").concat(tickerCards).concat(lowPerfMode ? '' : tickerCards, "</div>\n      </div>\n    </div>");
   var osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
-  var macroPanel = "<div class=\"g-panel lp-macro\">\n      <div class=\"sec-head\"><h3>".concat(t('panels.macroMarkets', 'Macro + Markets'), "</h3><span class=\"badge\">").concat(mkt.timestamp ? t('badges.live', 'LIVE') : t('badges.delayed', 'DELAYED'), "</span></div>\n      ").concat(hasMarkets ? "<div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">INDEXES</div>\n        <div class=\"metrics-row\">".concat(indexCards, "</div>\n      </div>\n      <div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">CRYPTO</div>\n        <div class=\"metrics-row\">").concat(cryptoCards, "</div>\n      </div>") : '', "\n      <div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">ENERGY + MACRO</div>\n        <div class=\"metrics-row\">").concat(metrics.map(function (m) {
+  var macroPanel = "<div class=\"g-panel lp-macro\">\n      <div class=\"sec-head\"><h3>".concat(t('panels.macroMarkets', 'Macro + Markets'), "</h3><span class=\"badge\">").concat(mkt.timestamp ? t('badges.live', 'LIVE') : t('badges.delayed', 'DELAYED'), "</span></div>\n      ").concat(hasMarkets ? "<div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">INDEXES</div>\n        <div class=\"metrics-row\">".concat(indexCards, "</div>\n      </div>\n      <div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">METALS</div>\n        <div class=\"metrics-row\">").concat(metalsMetrics.map(function (m) {
+    var sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
+    return "<div class=\"mc\"><div class=\"ml\">".concat(m.l, "</div><span class=\"mv\">").concat(m.v).concat(sparkSvg, "</span><span class=\"ms\">").concat(m.s, "</span><div class=\"mbar\"><span style=\"width:").concat(m.p, "%\"></span></div></div>");
+  }).join(''), "</div>\n      </div>\n      <div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">CRYPTO</div>\n        <div class=\"metrics-row\">").concat(cryptoCards, "</div>\n      </div>") : '', "\n      <div style=\"margin-bottom:8px\">\n        <div style=\"font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px\">ENERGY + METALS + MACRO</div>\n        <div class=\"metrics-row\">").concat(metrics.map(function (m) {
     var sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
     return "<div class=\"mc\"><div class=\"ml\">".concat(m.l, "</div><span class=\"mv\">").concat(m.v).concat(sparkSvg, "</span><span class=\"ms\">").concat(m.s, "</span><div class=\"mbar\"><span style=\"width:").concat(m.p, "%\"></span></div></div>");
   }).join(''), "</div>\n      </div>\n      <div style=\"margin-top:6px\">\n        <div style=\"font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px\">WTI 5-DAY</div>\n        <div class=\"spark\">").concat(sparkHtml, "</div>\n      </div>\n    </div>");
@@ -2238,7 +2264,8 @@ function init() {
   syncResponsiveLayout(true);
 }
 document.addEventListener('DOMContentLoaded', function () {
-  var hasInlineData = !!(D && D.meta);
+  var _D;
+  var hasInlineData = !!(D && (_D = D) !== null && _D !== void 0 && _D.meta);
   var canProbeApi = location.protocol !== 'file:';
   if (canProbeApi && !hasInlineData) {
     // Server mode: always fetch live data from API (ignore any stale inline D)
@@ -2249,8 +2276,9 @@ document.addEventListener('DOMContentLoaded', function () {
       init();
       connectSSE();
     })["catch"](function () {
+      var _D2;
       // Should not reach here — server routes to loading.html when no data
-      if (D && D.meta) {
+      if (D && (_D2 = D) !== null && _D2 !== void 0 && _D2.meta) {
         init();
         connectSSE();
       }
@@ -2260,3 +2288,11 @@ document.addEventListener('DOMContentLoaded', function () {
     init();
   }
 });
+window.toggleFlights = toggleFlights;
+window.toggleMapMode = toggleMapMode;
+window.togglePerfMode = togglePerfMode;
+window.mapZoom = mapZoom;
+window.setRegion = setRegion;
+window.openGlossary = openGlossary;
+window.closeGlossary = closeGlossary;
+window.closePopup = closePopup;

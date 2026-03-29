@@ -1,4 +1,3 @@
-// === DATA ===
 let D = null;
 
 // === I18N ===
@@ -971,6 +970,7 @@ function renderLower(){
   const payrolls=D.bls.find(b=>b.id==='CES0000000001');
   const gscpi=D.gscpi;
   const mkt=D.markets||{};
+  const metals=D.metals||{};
 
   const wtiH = D.energy.wtiRecent||[];
   const wtiMax=Math.max(...wtiH),wtiMin=Math.min(...wtiH);
@@ -992,11 +992,13 @@ function renderLower(){
   const vixFred = D.fred.find(f=>f.id==='VIXCLS');
   const vixVal = vixLive?.value || vixFred?.value;
   const vixChg = vixLive?.changePct != null ? `${vixLive.changePct>=0?'+':''}${vixLive.changePct}%` : '';
+  const fmtMarketPrice = (price) => price != null ? `$${price.toLocaleString(undefined,{maximumFractionDigits:2})}` : '--';
+  const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {l:'WTI Crude',v:`$${D.energy?.wti}`,s:'$/bbl',p:70},
+    {l:'Brent',v:`$${D.energy?.brent}`,s:'$/bbl',p:75},
+    {l:'Nat Gas',v:`$${D.energy?.natgas||'--'}`,s:'$/MMBtu',p:30},
     {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
     {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
     {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
@@ -1004,19 +1006,24 @@ function renderLower(){
     {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
   ];
 
+  const metalsMetrics = [
+    {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
+    {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
+  ];
+
   // Attach sparklines from FRED recent data
   const fredSpark = (id, up) => {
     const f = D.fred.find(f=>f.id===id);
     return f?.recent?.length > 1 ? {spark: f.recent, sparkUp: up} : {};
   };
-  metrics[0] = {...metrics[0], spark: D.energy.wtiRecent, sparkUp: false};
+  metalsMetrics[0] = {...metalsMetrics[0], spark: metals.goldRecent, sparkUp: (metals.goldChangePct ?? 0) >= 0};
+  metalsMetrics[1] = {...metalsMetrics[1], spark: metals.silverRecent, sparkUp: (metals.silverChangePct ?? 0) >= 0};
 
   // Build live market cards from Yahoo Finance
   const indexCards = (mkt.indexes||[]).map(mktCard).join('');
   const cryptoCards = (mkt.crypto||[]).map(mktCard).join('');
   const rateCards = (mkt.rates||[]).map(mktCard).join('');
-  const metalsCards = (mkt.commodities || []).map(mktCard).join('');
-  const hasMarkets = indexCards || cryptoCards || metalsCards;
+  const hasMarkets = indexCards || cryptoCards;
 
   const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
 
@@ -1081,15 +1088,17 @@ function renderLower(){
       </div>
       <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">METALS</div>
-        <div class="metrics-row">${metalsCards}</div>
+        <div class="metrics-row">${metalsMetrics.map(m=>{
+          const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
+          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+        }).join('')}</div>
       </div>
       <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
         <div class="metrics-row">${cryptoCards}</div>
-      </div>
-      `:''}
+      </div>`:''}
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + METALS + MACRO</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
           return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
@@ -1380,7 +1389,7 @@ function init(){
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const hasInlineData = !!(D && D.meta);
+  const hasInlineData = !!(D && D?.meta);
   const canProbeApi = location.protocol !== 'file:';
 
   if (canProbeApi && !hasInlineData) {
@@ -1390,7 +1399,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(data => { D = data; init(); connectSSE(); })
       .catch(() => {
         // Should not reach here — server routes to loading.html when no data
-        if (D && D.meta) { init(); connectSSE(); }
+        if (D && D?.meta) { init(); connectSSE(); }
       });
   } else if (hasInlineData) {
     // File mode: use inline data
