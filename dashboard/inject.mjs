@@ -444,8 +444,10 @@ export async function synthesize(data) {
   const oilPrices = energyData.oilPrices || {};
   const wtiRecent = (oilPrices.wti?.recent || []).map(d => d.value);
   const energy = {
-    wti: oilPrices.wti?.value, brent: oilPrices.brent?.value,
-    natgas: energyData.gasPrice?.value, crudeStocks: energyData.inventories?.crudeStocks?.value,
+    wti: oilPrices.wti?.value, 
+    brent: oilPrices.brent?.value,
+    natgas: energyData.gasPrice?.value, 
+    crudeStocks: energyData.inventories?.crudeStocks?.value,
     wtiRecent, signals: energyData.signals || []
   };
   const bls = data.sources.BLS?.indicators || [];

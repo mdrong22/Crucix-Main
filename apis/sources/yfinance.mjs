@@ -20,6 +20,9 @@ const SYMBOLS = {
   // Commodities
   'GC=F': 'Gold',
   'SI=F': 'Silver',
+  'CL=F': 'WTI Crude Oil',
+  'BZ=F': 'Brent Crude Oil',
+  'NG=F': 'Natural Gas',
   // Crypto
   'BTC-USD': 'Bitcoin',
   'ETH-USD': 'Ethereum',

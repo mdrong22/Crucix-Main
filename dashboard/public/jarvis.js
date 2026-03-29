@@ -997,11 +997,9 @@ function renderLower(){
   const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
-    {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
-    {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
+    {l:'WTI Crude',v:`$${D.energy?.wti}`,s:'$/bbl',p:70},
+    {l:'Brent',v:`$${D.energy?.brent}`,s:'$/bbl',p:75},
+    {l:'Nat Gas',v:`$${D.energy?.natgas||'--'}`,s:'$/MMBtu',p:30},
     {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
     {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
     {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
@@ -1009,14 +1007,18 @@ function renderLower(){
     {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
   ];
 
+  const metalsMetrics = [
+    {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
+    {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
+  ];
+
   // Attach sparklines from FRED recent data
   const fredSpark = (id, up) => {
     const f = D.fred.find(f=>f.id===id);
     return f?.recent?.length > 1 ? {spark: f.recent, sparkUp: up} : {};
   };
-  metrics[0] = {...metrics[0], spark: D.energy.wtiRecent, sparkUp: false};
-  metrics[3] = {...metrics[3], spark: metals.goldRecent, sparkUp: (metals.goldChangePct ?? 0) >= 0};
-  metrics[4] = {...metrics[4], spark: metals.silverRecent, sparkUp: (metals.silverChangePct ?? 0) >= 0};
+  metalsMetrics[0] = {...metalsMetrics[0], spark: metals.goldRecent, sparkUp: (metals.goldChangePct ?? 0) >= 0};
+  metalsMetrics[1] = {...metalsMetrics[1], spark: metals.silverRecent, sparkUp: (metals.silverChangePct ?? 0) >= 0};
 
   // Build live market cards from Yahoo Finance
   const indexCards = (mkt.indexes||[]).map(mktCard).join('');
@@ -1084,6 +1086,13 @@ function renderLower(){
       ${hasMarkets?`<div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
         <div class="metrics-row">${indexCards}</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">METALS</div>
+        <div class="metrics-row">${metalsMetrics.map(m=>{
+          const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
+          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+        }).join('')}</div>
       </div>
       <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
