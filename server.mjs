@@ -105,6 +105,7 @@ if (telegramAlerter.isConfigured) {
 
     const tg = currentData.tg || {};
     const energy = currentData.energy || {};
+    const metals = currentData.metals || {};
     const delta = memory.getLastDelta();
     const ideas = (currentData.ideas || []).slice(0, 3);
 
@@ -124,9 +125,10 @@ if (telegramAlerter.isConfigured) {
     // Key metrics
     const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
     const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti) {
+    if (vix || energy.wti || metals.gold || metals.silver) {
       sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      if (hy) sections.push(`   HY Spread: ${hy.value} | NatGas: $${energy.natgas || '--'}`);
+      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
+      sections.push(`   NatGas: $${energy.natgas || '--'}`);
       sections.push('');
     }
 
@@ -202,6 +204,7 @@ if (discordAlerter.isConfigured) {
 
     const tg = currentData.tg || {};
     const energy = currentData.energy || {};
+    const metals = currentData.metals || {};
     const delta = memory.getLastDelta();
     const ideas = (currentData.ideas || []).slice(0, 3);
 
@@ -214,9 +217,10 @@ if (discordAlerter.isConfigured) {
 
     const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
     const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti) {
+    if (vix || energy.wti || metals.gold || metals.silver) {
       sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      if (hy) sections.push(`   HY Spread: ${hy.value} | NatGas: $${energy.natgas || '--'}`);
+      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
+      sections.push(`   NatGas: $${energy.natgas || '--'}`);
       sections.push('');
     }
 
