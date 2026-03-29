@@ -1,6 +1,3 @@
-// === DATA ===
-let D = null;
-
 // === I18N ===
 const L = window.__CRUCIX_LOCALE__ || {};
 function t(keyPath, fallback) {
@@ -218,9 +215,6 @@ function renderTopbar(){
     </div>
     ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
-
-      <a href="redline.html" class="redline">⬛ REDLINE</a>
-
       <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
       <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
@@ -974,6 +968,7 @@ function renderLower(){
   const payrolls=D.bls.find(b=>b.id==='CES0000000001');
   const gscpi=D.gscpi;
   const mkt=D.markets||{};
+  const metals=D.metals||{};
 
   const wtiH = D.energy.wtiRecent||[];
   const wtiMax=Math.max(...wtiH),wtiMin=Math.min(...wtiH);
@@ -995,11 +990,15 @@ function renderLower(){
   const vixFred = D.fred.find(f=>f.id==='VIXCLS');
   const vixVal = vixLive?.value || vixFred?.value;
   const vixChg = vixLive?.changePct != null ? `${vixLive.changePct>=0?'+':''}${vixLive.changePct}%` : '';
+  const fmtMarketPrice = (price) => price != null ? `$${price.toLocaleString(undefined,{maximumFractionDigits:2})}` : '--';
+  const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
     {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
     {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
     {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
+    {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
     {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
     {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
     {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
@@ -1013,13 +1012,14 @@ function renderLower(){
     return f?.recent?.length > 1 ? {spark: f.recent, sparkUp: up} : {};
   };
   metrics[0] = {...metrics[0], spark: D.energy.wtiRecent, sparkUp: false};
+  metrics[3] = {...metrics[3], spark: metals.goldRecent, sparkUp: (metals.goldChangePct ?? 0) >= 0};
+  metrics[4] = {...metrics[4], spark: metals.silverRecent, sparkUp: (metals.silverChangePct ?? 0) >= 0};
 
   // Build live market cards from Yahoo Finance
   const indexCards = (mkt.indexes||[]).map(mktCard).join('');
   const cryptoCards = (mkt.crypto||[]).map(mktCard).join('');
   const rateCards = (mkt.rates||[]).map(mktCard).join('');
-  const metalsCards = (mkt.commodities || []).map(mktCard).join('');
-  const hasMarkets = indexCards || cryptoCards || metalsCards;
+  const hasMarkets = indexCards || cryptoCards;
 
   const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
 
@@ -1083,16 +1083,11 @@ function renderLower(){
         <div class="metrics-row">${indexCards}</div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">METALS</div>
-        <div class="metrics-row">${metalsCards}</div>
-      </div>
-      <div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
         <div class="metrics-row">${cryptoCards}</div>
-      </div>
-      `:''}
+      </div>`:''}
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + METALS + MACRO</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
           return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
