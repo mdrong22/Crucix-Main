@@ -1,3 +1,5 @@
+let D = null;
+
 // === I18N ===
 const L = window.__CRUCIX_LOCALE__ || {};
 function t(keyPath, fallback) {
@@ -1379,7 +1381,7 @@ function init(){
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const hasInlineData = !!(D && D.meta);
+  const hasInlineData = !!(D && D?.meta);
   const canProbeApi = location.protocol !== 'file:';
 
   if (canProbeApi && !hasInlineData) {
@@ -1389,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(data => { D = data; init(); connectSSE(); })
       .catch(() => {
         // Should not reach here — server routes to loading.html when no data
-        if (D && D.meta) { init(); connectSSE(); }
+        if (D && D?.meta) { init(); connectSSE(); }
       });
   } else if (hasInlineData) {
     // File mode: use inline data
