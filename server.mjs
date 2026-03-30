@@ -311,31 +311,35 @@ app.get('/api/locales', (req, res) => {
   });
 });
 
-app.get('/api/redline', (req, res) => {
+app.get('/api/redline', async (req, res) => {
   if (!currentData) {
     return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   }
-  // ── SnapTrade cached values (all sync — set during sweep) ─────────────────
-  const rawOrders = snapTrade.GetOrders24h();
-  // Normalize orders shape — SnapTrade SDK can return an array directly
-  // or an object like { orders: [] } depending on the endpoint version
-  const orders = Array.isArray(rawOrders)
-    ? rawOrders
-    : Array.isArray(rawOrders?.orders)
-      ? rawOrders.orders
-      : [];
+
   // ── yFinance quotes — pulled from currentData set during sweep ───────────
   // Shape from yfinance.mjs: currentData.yfinance.quotes = { SPY: {...}, QQQ: {...} }
   // Frontend buildMarket() and buildTicker() both expect this quotes object
   const yfinanceQuotes = currentData?.yfinance?.quotes ?? null;
-
+  const [currentPort, accountHoldings, orders24h, totalVal, buyPower] = await Promise.all
+  ([
+    snapTrade.FetchUserTrades(), 
+    snapTrade.getBuyDates(), 
+    snapTrade.FetchAccountOrders24h(), 
+    snapTrade.FetchAccountTotalValue(), 
+    snapTrade.FetchAccountBuyingPower()
+  ])
+  const orders = Array.isArray(orders24h)
+    ? orders24h
+    : Array.isArray(orders24h?.orders)
+      ? orders24h.orders
+      : [];
   res.json({
     // Account data
-    currentPortfolio:       snapTrade.GetCurrentPortfolio(),       // JSON string → frontend parses
-    accountCurrentHoldings: snapTrade.GetCurrentAcccountHoldings(),
+    currentPortfolio:       currentPort,       // JSON string → frontend parses
+    accountCurrentHoldings: accountHoldings,
     accountOrders24h:       { orders },                            // normalized to { orders: [] }
-    accountTotalValue:      snapTrade.GetAccountTotalValue(),
-    buyingPower:            snapTrade.currentBuyingPower ?? null,  // cached number, not async call
+    accountTotalValue:      totalVal,
+    buyingPower:            buyPower || null,  // cached number, not async call
 
     // Market data — feeds buildMarket() and buildTicker()
     // Frontend reads: crucixData.yfinance?.quotes

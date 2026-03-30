@@ -23,7 +23,9 @@
   --crucix-green:#64f0c8;
   --crucix-dim:#3b8a73;
   --orange:#ff6b35;
-  --retro-orange: #C04E01;
+  --retro-orange:#C04E01;
+  --retro-orange-dim:rgba(192,78,1,0.15);
+  --retro-orange-border:rgba(192,78,1,0.5);
   --gold:#ffcc00;
   --green:#39ff6e;
   --green-dim:rgba(57,255,110,0.12);
@@ -99,12 +101,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   border-right:1px solid rgba(255,34,68,0.1)}
 .al-sym{color:#fff;font-weight:600;letter-spacing:0.06em}
 .al-val.up{color:var(--green)}
-.al-val.dn{color:var(--red)}
+.al-val.dn{color:var(--retro-orange)}
 .al-val.flat{color:rgba(255,200,215,0.5)}
 
 /* ── SKELETON ── */
 .skel{background:linear-gradient(90deg,rgba(255,34,68,0.05) 25%,rgba(255,34,68,0.12) 50%,rgba(255,34,68,0.05) 75%);
-  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:2px}
+  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:2px;display:inline-block}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* ── ERROR BANNER ── */
@@ -148,14 +150,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .pf-delta{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
 .pf-chg{font-family:var(--mono);font-size:13px;font-weight:700;padding:5px 12px;border:1px solid}
 .pf-chg.up{color:var(--green);border-color:rgba(57,255,110,0.4);background:rgba(57,255,110,0.07);text-shadow:0 0 8px var(--green-glow)}
-.pf-chg.dn{color:var(--red);border-color:rgba(255,34,68,0.4);background:rgba(255,34,68,0.07)}
+.pf-chg.dn{color:var(--retro-orange);border-color:var(--retro-orange-border);background:var(--retro-orange-dim)}
 .pf-period-lbl{font-family:var(--mono);font-size:9px;color:rgba(255,100,120,0.4);letter-spacing:0.1em;text-transform:uppercase}
 .pf-stats{display:flex;gap:8px;flex-wrap:wrap}
 .pf-stat{padding:10px 14px;border:1px solid var(--red-border);background:rgba(255,34,68,0.04);min-width:90px}
 .pf-stat-lbl{font-family:var(--orb);font-size:7px;letter-spacing:0.14em;color:rgba(255,80,100,0.45);margin-bottom:5px;text-transform:uppercase}
 .pf-stat-val{font-family:var(--orb);font-size:15px;font-weight:600}
 .pf-stat-val.up{color:var(--green)}
-.pf-stat-val.dn{color:var(--red)}
+.pf-stat-val.dn{color:var(--retro-orange)}
 .pf-stat-val.neu{color:rgba(255,210,220,0.85)}
 .chart-wrap{position:relative;height:190px;margin-top:12px}
 #mainChart{width:100%;height:100%}
@@ -167,7 +169,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .metric-lbl{font-family:var(--orb);font-size:7px;letter-spacing:0.14em;color:rgba(255,80,100,0.45);text-transform:uppercase;margin-bottom:4px}
 .metric-val{font-family:var(--orb);font-size:18px;font-weight:600;line-height:1}
 .metric-val.g{color:var(--green)}
-.metric-val.r{color:var(--red)}
+.metric-val.r{color:var(--retro-orange)}
 .metric-val.y{color:var(--gold)}
 .metric-val.w{color:rgba(255,210,220,0.9)}
 .metric-sub{font-family:var(--mono);font-size:8px;color:rgba(255,100,120,0.3);margin-top:3px}
@@ -182,6 +184,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   background:linear-gradient(90deg,transparent,rgba(255,34,68,0.18),transparent);pointer-events:none}
 .pos-card:hover{transform:translateY(-2px);border-color:rgba(255,34,68,0.45);box-shadow:0 6px 24px rgba(255,34,68,0.12)}
 .pos-card.is-up:hover{border-color:rgba(57,255,110,0.35);box-shadow:0 6px 24px rgba(57,255,110,0.08)}
+.pos-card.is-dn:hover{border-color:var(--retro-orange-border);box-shadow:0 6px 24px rgba(192,78,1,0.12)}
 .pos-ghost{position:absolute;right:6px;top:50%;transform:translateY(-50%);
   font-family:var(--orb);font-size:28px;font-weight:900;opacity:0.055;letter-spacing:0.04em;pointer-events:none}
 .pos-row1{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
@@ -192,13 +195,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .pos-price{font-family:var(--orb);font-size:17px;font-weight:600;color:#fff}
 .pos-chg-badge{font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 5px;border:1px solid}
 .pos-chg-badge.up{color:var(--green);border-color:rgba(57,255,110,0.3);background:rgba(57,255,110,0.06)}
-.pos-chg-badge.dn{color:var(--red);border-color:var(--retro-orange);background:var(--retro-orange)}
+.pos-chg-badge.dn{color:var(--retro-orange);border-color:var(--retro-orange-border);background:var(--retro-orange-dim)}
 .pos-row3{display:flex;justify-content:space-between;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,34,68,0.07)}
 .pos-meta-lbl{font-family:var(--mono);font-size:7px;color:rgba(255,100,120,0.35);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px}
 .pos-meta-val{font-family:var(--orb);font-size:10px;font-weight:500;color:rgba(255,210,220,0.8)}
 .pos-pnl-val{font-family:var(--orb);font-size:10px;font-weight:600}
 .pos-pnl-val.pos{color:var(--green)}
-.pos-pnl-val.neg{color:var(--red)}
+.pos-pnl-val.neg{color:var(--retro-orange)}
 
 /* ── MARKET OVERVIEW ── */
 .mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}
@@ -208,7 +211,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .mkt-price{font-family:var(--orb);font-size:15px;font-weight:600;color:#fff;margin-top:5px}
 .mkt-chg{font-family:var(--mono);font-size:9px;margin-top:2px}
 .mkt-chg.up{color:var(--green)}
-.mkt-chg.dn{color:var(--red)}
+.mkt-chg.dn{color:var(--retro-orange)}
 .mkt-chg.flat{color:rgba(255,200,215,0.4)}
 
 /* ── TRANSACTIONS ── */
@@ -218,18 +221,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   background:rgba(12,4,6,0.7);display:flex;align-items:flex-start;gap:9px;transition:background 0.15s}
 .tx-row:hover{background:rgba(20,6,10,0.9)}
 .tx-row.buy{border-left-color:var(--green)}
-.tx-row.sell{border-left-color:var(--red)}
+.tx-row.sell{border-left-color:var(--retro-orange)}
 .tx-row.other{border-left-color:var(--gold)}
 .tx-icon{width:26px;height:26px;border:1px solid;display:flex;align-items:center;justify-content:center;
   font-family:var(--orb);font-size:6px;font-weight:700;letter-spacing:0.07em;flex-shrink:0;margin-top:1px}
 .tx-icon.buy{color:var(--green);border-color:rgba(57,255,110,0.3);background:rgba(57,255,110,0.06)}
-.tx-icon.sell{color:var(--red);border-color:rgba(255,34,68,0.3);background:rgba(255,34,68,0.06)}
+.tx-icon.sell{color:var(--retro-orange);border-color:var(--retro-orange-border);background:var(--retro-orange-dim)}
 .tx-icon.other{color:var(--gold);border-color:rgba(255,204,0,0.3);background:rgba(255,204,0,0.06)}
 .tx-body{flex:1;min-width:0}
 .tx-line1{display:flex;justify-content:space-between;align-items:flex-start;gap:4px}
 .tx-ticker{font-family:var(--orb);font-size:11px;font-weight:700;letter-spacing:0.06em;color:#fff}
 .tx-amt{font-family:var(--orb);font-size:11px;font-weight:600}
-.tx-amt.buy{color:var(--red)}
+.tx-amt.buy{color:var(--retro-orange)}
 .tx-amt.sell{color:var(--green)}
 .tx-amt.other{color:var(--gold)}
 .tx-detail{font-family:var(--mono);font-size:8px;color:rgba(255,130,150,0.4);margin-top:2px}
@@ -290,7 +293,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 <!-- ERROR BANNER -->
 <div class="error-banner" id="errorBanner"></div>
 
-<!-- APP -->
+<!-- APP — all skeleton HTML is now rendered by JS, not hardcoded in HTML -->
 <div id="app">
   <div class="layout">
     <div class="col-main">
@@ -303,7 +306,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
           <div>
             <div class="pf-eyebrow">TOTAL PORTFOLIO VALUE</div>
             <div class="pf-value" id="pfValue">
-              <span class="skel" style="display:inline-block;width:220px;height:44px"></span>
+              <span class="skel" style="width:220px;height:44px"></span>
             </div>
             <div class="pf-delta">
               <div class="pf-chg" id="pfPnl" style="opacity:0.3">— P&L</div>
@@ -311,10 +314,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
             </div>
           </div>
           <div class="pf-stats" id="pfStats">
-            <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu skel" style="height:20px;width:40px"></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val skel" style="height:20px;width:60px"></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">WINNERS</div><div class="pf-stat-val skel" style="height:20px;width:40px"></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">LOSERS</div><div class="pf-stat-val skel" style="height:20px;width:40px"></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu"><span class="skel" style="width:40px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val"><span class="skel" style="width:60px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">WINNERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">LOSERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
           </div>
         </div>
         <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
@@ -327,9 +330,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
           <div class="panel-title">◈ MARKET OVERVIEW // LIVE QUOTES</div>
           <div class="panel-badge live" id="mktBadge">● LIVE</div>
         </div>
-        <div class="mkt-grid" id="mktGrid">
-          ${[...Array(8)].map(()=>`<div class="mkt-card"><div class="skel" style="height:11px;width:60px;margin-bottom:4px"></div><div class="skel" style="height:8px;width:90px;margin-bottom:8px"></div><div class="skel" style="height:15px;width:70px"></div></div>`).join('')}
-        </div>
+        <div class="mkt-grid" id="mktGrid"></div>
       </div>
 
       <!-- POSITIONS -->
@@ -338,9 +339,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
           <div class="panel-title">◈ OPEN POSITIONS // HOLDINGS</div>
           <div class="panel-badge" id="posCount">— POSITIONS</div>
         </div>
-        <div class="pos-grid" id="posGrid">
-          ${[...Array(6)].map(()=>`<div class="pos-card"><div class="skel" style="height:14px;width:60px;margin-bottom:6px"></div><div class="skel" style="height:8px;width:100px;margin-bottom:10px"></div><div class="skel" style="height:17px;width:80px"></div></div>`).join('')}
-        </div>
+        <div class="pos-grid" id="posGrid"></div>
       </div>
 
     </div>
@@ -352,9 +351,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
           <div class="panel-title">◈ ORDERS // LAST 24H</div>
           <div class="panel-badge" id="txCount">— ORDERS</div>
         </div>
-        <div class="tx-scroll" id="txScroll">
-          ${[...Array(4)].map(()=>`<div class="tx-row other"><div class="tx-icon other">···</div><div class="tx-body"><div class="skel" style="height:11px;width:120px;margin-bottom:4px"></div><div class="skel" style="height:8px;width:80px"></div></div></div>`).join('')}
-        </div>
+        <div class="tx-scroll" id="txScroll"></div>
       </div>
 
     </div>
@@ -370,13 +367,21 @@ tick();setInterval(tick,1000);
 const fmt=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtK=v=>v>=1000?'$'+(v/1000).toFixed(0)+'k':'$'+v.toFixed(0);
 const fmtPrice=v=>{if(v==null)return'—';return v>=1000?'$'+fmt(v,0):'$'+fmt(v,2)};
+const SKEL_MKT  = Array(8).fill(0).map(()=>`<div class="mkt-card"><span class="skel" style="width:60px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:90px;height:8px;display:block;margin-bottom:8px"></span><span class="skel" style="width:70px;height:15px;display:block"></span></div>`).join('');
+const SKEL_POS  = Array(6).fill(0).map(()=>`<div class="pos-card"><span class="skel" style="width:60px;height:14px;margin-bottom:6px"></span><span class="skel" style="width:100px;height:8px;display:block;margin-bottom:10px"></span><span class="skel" style="width:80px;height:17px;display:block"></span></div>`).join('');
+const SKEL_TX   = Array(4).fill(0).map(()=>`<div class="tx-row other"><div class="tx-icon other">···</div><div class="tx-body"><span class="skel" style="width:120px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:80px;height:8px;display:block"></span></div></div>`).join('');
+
+// Inject loading skeletons on page load via JS — never put template literals in raw HTML
+document.getElementById('mktGrid').innerHTML  = SKEL_MKT;
+document.getElementById('posGrid').innerHTML  = SKEL_POS;
+document.getElementById('txScroll').innerHTML = SKEL_TX;
 
 function setStatus(state, txt) {
   const dot = document.getElementById('statusDot');
   const label = document.getElementById('statusTxt');
   dot.className = 'status-dot ' + state;
   label.textContent = txt;
-  label.style.color = state === 'error' ? 'rgba(255,34,68,0.7)' : state === 'loading' ? 'rgba(255,204,0,0.7)' : 'rgba(57,255,110,0.7)';
+  label.style.color = state==='error' ? 'rgba(255,34,68,0.7)' : state==='loading' ? 'rgba(255,204,0,0.7)' : 'rgba(57,255,110,0.7)';
 }
 
 function showError(msg) {
@@ -386,14 +391,13 @@ function showError(msg) {
   setTimeout(() => b.classList.remove('show'), 8000);
 }
 
-// ── SPARKLINE (generated from price history or simulated)
 function sparkPath(data, W, H) {
   if (!data || data.length < 2) return '';
-  const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1;
-  return 'M' + data.map((v,i) => `${(i/(data.length-1))*W},${H-((v-mn)/rng)*(H*0.82)-H*0.09}`).join(' L');
+  const mn=Math.min(...data), mx=Math.max(...data), rng=mx-mn||1;
+  return 'M'+data.map((v,i)=>`${(i/(data.length-1))*W},${H-((v-mn)/rng)*(H*0.82)-H*0.09}`).join(' L');
 }
 
-// ── TICKER BUILD
+// ── TICKER
 function buildTicker(quotes) {
   const track = document.getElementById('alertTrack');
   if (!quotes || !Object.keys(quotes).length) return;
@@ -411,16 +415,16 @@ function buildTicker(quotes) {
 // ── MARKET OVERVIEW
 function buildMarket(quotes) {
   const grid = document.getElementById('mktGrid');
-  if (!quotes) { grid.innerHTML = '<div class="empty-state">NO MARKET DATA</div>'; return; }
+  if (!quotes) { grid.innerHTML='<div class="empty-state">NO MARKET DATA</div>'; return; }
   const items = Object.values(quotes).filter(q => q && !q.error && q.price);
-  if (!items.length) { grid.innerHTML = '<div class="empty-state">NO QUOTES AVAILABLE</div>'; return; }
+  if (!items.length) { grid.innerHTML='<div class="empty-state">NO QUOTES AVAILABLE</div>'; return; }
   grid.innerHTML = items.map(q => {
     const up = q.changePct >= 0;
     const cls = Math.abs(q.changePct) < 0.01 ? 'flat' : up ? 'up' : 'dn';
     const sign = up ? '▲ +' : '▼ ';
     return `<div class="mkt-card">
       <div class="mkt-sym">${q.symbol}</div>
-      <div class="mkt-name">${q.name || ''}</div>
+      <div class="mkt-name">${q.name||''}</div>
       <div class="mkt-price">${fmtPrice(q.price)}</div>
       <div class="mkt-chg ${cls}">${sign}${fmt(Math.abs(q.changePct),2)}%</div>
     </div>`;
@@ -429,14 +433,11 @@ function buildMarket(quotes) {
 
 // ── PORTFOLIO HEADER
 function buildPortfolioHeader(positions, totalValue) {
-  // Compute aggregates from positions
-  const totalPnl = positions.reduce((s, p) => s + (p.open_pnl || 0), 0);
-  const totalMktVal = positions.reduce((s, p) => s + (p.price * p.units), 0);
-  const winners = positions.filter(p => p.open_pnl > 0).length;
-  const losers = positions.filter(p => p.open_pnl < 0).length;
-  const pnlUp = totalPnl >= 0;
-
-  // Portfolio value: use totalValue from SnapTrade if available, else compute
+  const totalPnl   = positions.reduce((s,p) => s+(p.open_pnl||0), 0);
+  const totalMktVal= positions.reduce((s,p) => s+(p.price*p.units), 0);
+  const winners    = positions.filter(p=>p.open_pnl>0).length;
+  const losers     = positions.filter(p=>p.open_pnl<0).length;
+  const pnlUp      = totalPnl >= 0;
   const displayVal = totalValue != null ? totalValue : totalMktVal;
 
   document.getElementById('pfValue').innerHTML = `$${fmt(displayVal, 2)}`;
@@ -447,14 +448,14 @@ function buildPortfolioHeader(positions, totalValue) {
   pfPnl.innerHTML = `${pnlUp ? '▲ +' : '▼ '}$${fmt(Math.abs(totalPnl), 2)} OPEN P&L`;
 
   document.getElementById('pfStats').innerHTML = [
-    { lbl: 'POSITIONS', val: positions.length, cls: 'neu' },
-    { lbl: 'TOTAL P&L', val: (pnlUp ? '+' : '') + '$' + fmt(Math.abs(totalPnl), 2), cls: pnlUp ? 'up' : 'dn' },
-    { lbl: 'WINNERS', val: winners, cls: 'up' },
-    { lbl: 'LOSERS', val: losers, cls: 'dn' },
-  ].map(s => `<div class="pf-stat"><div class="pf-stat-lbl">${s.lbl}</div><div class="pf-stat-val ${s.cls}">${s.val}</div></div>`).join('');
+    { lbl:'POSITIONS', val:positions.length, cls:'neu' },
+    { lbl:'TOTAL P&L', val:(pnlUp?'+':'')+' $'+fmt(Math.abs(totalPnl),2), cls:pnlUp?'up':'dn' },
+    { lbl:'WINNERS',   val:winners, cls:'up' },
+    { lbl:'LOSERS',    val:losers,  cls:'dn' },
+  ].map(s=>`<div class="pf-stat"><div class="pf-stat-lbl">${s.lbl}</div><div class="pf-stat-val ${s.cls}">${s.val}</div></div>`).join('');
 }
 
-// ── POSITIONS GRID
+// ── POSITIONS
 function buildPositions(positions, quotes) {
   const grid = document.getElementById('posGrid');
   if (!positions || !positions.length) {
@@ -463,39 +464,32 @@ function buildPositions(positions, quotes) {
     return;
   }
 
-  // Build quote lookup by symbol for sparkline history
   const quoteLookup = {};
-  if (quotes) {
-    Object.values(quotes).forEach(q => { if (q && q.symbol) quoteLookup[q.symbol] = q; });
-  }
+  if (quotes) Object.values(quotes).forEach(q => { if(q&&q.symbol) quoteLookup[q.symbol]=q; });
 
   grid.innerHTML = positions.map(p => {
-    const ticker = p.symbol?.symbol?.symbol || p.symbol?.symbol?.raw_symbol || '???';
-    const desc = p.symbol?.symbol?.description || '';
-    const price = p.price || 0;
-    const units = p.units || 0;
-    const cost = p.average_purchase_price || 0;
-    const pnl = p.open_pnl || 0;
-    const mktVal = price * units;
-    const pnlUp = pnl >= 0;
+    const ticker   = p.symbol?.symbol?.symbol || p.symbol?.symbol?.raw_symbol || '???';
+    const desc     = p.symbol?.symbol?.description || '';
+    const price    = p.price || 0;
+    const units    = p.units || 0;
+    const cost     = p.average_purchase_price || 0;
+    const pnl      = p.open_pnl || 0;
+    const mktVal   = price * units;
+    const pnlUp    = pnl >= 0;
+    const q        = quoteLookup[ticker];
+    const changePct= q ? q.changePct : (cost>0 ? ((price-cost)/cost)*100 : 0);
+    const up       = changePct >= 0;
 
-    // Price change — use yFinance if symbol matches, else derive from cost
-    const q = quoteLookup[ticker];
-    const changePct = q ? q.changePct : (cost > 0 ? ((price - cost) / cost) * 100 : 0);
-    const up = changePct >= 0;
-
-    // Sparkline from yFinance history or simulated from cost→price
     let sparkData;
     if (q && q.history && q.history.length >= 2) {
       sparkData = q.history.map(h => h.close);
     } else {
-      // Simulate a mini 8-point path from cost to current price
-      sparkData = Array.from({length: 8}, (_, i) => cost + ((price - cost) * i / 7) + (Math.random() - 0.5) * price * 0.005);
+      sparkData = Array.from({length:8}, (_,i) => cost+((price-cost)*i/7)+(Math.random()-0.5)*price*0.005);
     }
-    const sp = sparkPath(sparkData, 54, 22);
-    const prFmt = fmtPrice(price);
+    const sp     = sparkPath(sparkData, 54, 22);
+    const stroke = up ? '#39ff6e' : '#C04E01';
 
-    return `<div class="pos-card${up ? ' is-up' : ''}">
+    return `<div class="pos-card ${up?'is-up':'is-dn'}">
       <div class="pos-ghost">${ticker}</div>
       <div class="pos-row1">
         <div>
@@ -503,16 +497,16 @@ function buildPositions(positions, quotes) {
           <div class="pos-name" title="${desc}">${desc}</div>
         </div>
         ${sp ? `<svg class="pos-spark-svg" viewBox="0 0 54 22" preserveAspectRatio="none">
-          <path d="${sp}" fill="none" stroke="${up?'#39ff6e':'#C04E01'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+          <path d="${sp}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
         </svg>` : '<div style="width:54px"></div>'}
       </div>
       <div class="pos-row2">
-        <div class="pos-price">${prFmt}</div>
+        <div class="pos-price">${fmtPrice(price)}</div>
         <div class="pos-chg-badge ${up?'up':'dn'}">${up?'▲':'▼'} ${fmt(Math.abs(changePct),2)}%</div>
       </div>
       <div class="pos-row3">
-        <div><div class="pos-meta-lbl">UNITS</div><div class="pos-meta-val">${units < 1 ? fmt(units, 4) : fmt(units, 2)}</div></div>
-        <div><div class="pos-meta-lbl">MKT VAL</div><div class="pos-meta-val">$${fmt(mktVal, 0)}</div></div>
+        <div><div class="pos-meta-lbl">UNITS</div><div class="pos-meta-val">${units<1?fmt(units,4):fmt(units,2)}</div></div>
+        <div><div class="pos-meta-lbl">MKT VAL</div><div class="pos-meta-val">$${fmt(mktVal,0)}</div></div>
         <div><div class="pos-meta-lbl">P&L</div><div class="pos-pnl-val ${pnlUp?'pos':'neg'}">${pnlUp?'+':'-'}$${fmt(Math.abs(pnl),2)}</div></div>
       </div>
     </div>`;
@@ -521,7 +515,7 @@ function buildPositions(positions, quotes) {
   document.getElementById('posCount').textContent = positions.length + ' POSITIONS';
 }
 
-// ── ORDERS / TRANSACTIONS
+// ── ORDERS
 function buildOrders(ordersData) {
   const scroll = document.getElementById('txScroll');
   const orders = ordersData?.orders || (Array.isArray(ordersData) ? ordersData : []);
@@ -533,41 +527,34 @@ function buildOrders(ordersData) {
   }
 
   scroll.innerHTML = orders.map(o => {
-    const action = (o.action || 'ORDER').toLowerCase();
-    const isBuy = action === 'buy';
-    const isSell = action === 'sell';
+    const action    = (o.action||'ORDER').toLowerCase();
+    const isBuy     = action === 'buy';
+    const isSell    = action === 'sell';
     const typeClass = isBuy ? 'buy' : isSell ? 'sell' : 'other';
-
-    const ticker = o.universal_symbol?.symbol || o.quote_universal_symbol?.symbol || '???';
+    const ticker    = o.universal_symbol?.symbol || o.quote_universal_symbol?.symbol || '???';
     const filledQty = parseFloat(o.filled_quantity) || 0;
-    const totalQty = parseFloat(o.total_quantity) || 0;
+    const totalQty  = parseFloat(o.total_quantity)  || 0;
     const execPrice = o.execution_price;
-    const limitPrice = o.limit_price;
-    const total = filledQty * (execPrice || limitPrice || 0);
+    const limitPrice= o.limit_price;
+    const total     = filledQty * (execPrice || limitPrice || 0);
+    const pfx       = isBuy ? '-$' : '+$';
+    const timeStr   = o.time_executed || o.time_placed || '';
+    const timeFmt   = timeStr ? new Date(timeStr).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
 
-    const pfx = isBuy ? '-$' : '+$';
-    const timeStr = o.time_executed || o.time_placed || '';
-    const timeFmt = timeStr ? new Date(timeStr).toLocaleString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-
-    // Status
-    const status = o.status || '';
-    let statusClass = 'pending', statusLabel = status;
-    if (filledQty > 0 && filledQty >= totalQty) { statusClass = 'filled'; statusLabel = 'FILLED'; }
-    else if (filledQty > 0) { statusClass = 'partial'; statusLabel = `PARTIAL ${filledQty}/${totalQty}`; }
-    else if (status === 'NONE' || status === '') { statusClass = 'pending'; statusLabel = 'PENDING'; }
+    let statusClass='pending', statusLabel=o.status||'PENDING';
+    if (filledQty>0 && filledQty>=totalQty)   { statusClass='filled';  statusLabel='FILLED'; }
+    else if (filledQty>0)                      { statusClass='partial'; statusLabel=`PARTIAL ${filledQty}/${totalQty}`; }
 
     const detail = execPrice
-      ? `${filledQty} units @ $${fmt(execPrice, 2)}`
-      : limitPrice
-        ? `Limit $${fmt(limitPrice, 2)} · ${o.order_type || ''}`
-        : o.order_type || 'Order';
+      ? `${filledQty} units @ $${fmt(execPrice,2)}`
+      : limitPrice ? `Limit $${fmt(limitPrice,2)} · ${o.order_type||''}` : o.order_type||'Order';
 
     return `<div class="tx-row ${typeClass}">
-      <div class="tx-icon ${typeClass}">${(o.action || 'ORD').toUpperCase().slice(0,4)}</div>
+      <div class="tx-icon ${typeClass}">${(o.action||'ORD').toUpperCase().slice(0,4)}</div>
       <div class="tx-body">
         <div class="tx-line1">
           <span class="tx-ticker">${ticker}</span>
-          <span class="tx-amt ${typeClass}">${total > 0 ? pfx + fmt(total, 2) : '—'}</span>
+          <span class="tx-amt ${typeClass}">${total>0?pfx+fmt(total,2):'—'}</span>
         </div>
         <div class="tx-detail">${detail}</div>
         <div class="tx-time">${timeFmt}</div>
@@ -581,146 +568,115 @@ function buildOrders(ordersData) {
 
 // ── CHART
 function genChartData(positions) {
-  // Build a notional curve from average cost → current for each position
-  // Use 40 points, interpolating each position's cost basis to current price weighted by mkt val
-  const pts = 40;
-  const totalCost = positions.reduce((s, p) => s + (p.average_purchase_price * p.units), 0);
-  const totalNow = positions.reduce((s, p) => s + (p.price * p.units), 0);
-  const data = [];
-  let v = totalCost;
-  const step = (totalNow - totalCost) / (pts * 0.6);
-  for (let i = 0; i < pts; i++) {
-    v += step + (Math.random() - 0.48) * Math.abs(step) * 2;
-    data.push(v);
-  }
-  data[data.length - 1] = totalNow;
+  const pts      = 40;
+  const totalCost= positions.reduce((s,p) => s+(p.average_purchase_price*p.units), 0);
+  const totalNow = positions.reduce((s,p) => s+(p.price*p.units), 0);
+  const data=[]; let v=totalCost;
+  const step=(totalNow-totalCost)/(pts*0.6);
+  for(let i=0;i<pts;i++){ v+=step+(Math.random()-0.48)*Math.abs(step)*2; data.push(v); }
+  data[data.length-1]=totalNow;
   return data;
 }
 
 function drawChart(positions) {
-  const canvas = document.getElementById('mainChart');
-  if (!canvas || !positions || !positions.length) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.parentElement.offsetWidth, H = 190;
-  canvas.width = W; canvas.height = H;
-  const data = genChartData(positions);
-  const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1;
-  const isUp = data[data.length-1] >= data[0];
-  const lc = isUp ? '#39ff6e' : '#ff2244';
-  const gc = isUp ? 'rgba(57,255,110,.7)' : 'rgba(255,34,68,.7)';
-  const ft = isUp ? 'rgba(57,255,110,.10)' : 'rgba(255,34,68,.10)';
-  const px = i => (i/(data.length-1))*W;
-  const py = v => H - 0.08*H - ((v-mn)/rng)*(H*0.82);
-  ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = 'rgba(255,34,68,.055)'; ctx.lineWidth = 1;
-  for (let g = 1; g < 5; g++) {
-    const y = py(mn + rng*g/4);
+  const canvas=document.getElementById('mainChart');
+  if(!canvas||!positions||!positions.length) return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.parentElement.offsetWidth, H=190;
+  canvas.width=W; canvas.height=H;
+  const data=genChartData(positions);
+  const mn=Math.min(...data), mx=Math.max(...data), rng=mx-mn||1;
+  const isUp=data[data.length-1]>=data[0];
+  const lc=isUp?'#39ff6e':'#C04E01';
+  const gc=isUp?'rgba(57,255,110,.7)':'rgba(192,78,1,.7)';
+  const ft=isUp?'rgba(57,255,110,.10)':'rgba(192,78,1,.10)';
+  const px=i=>(i/(data.length-1))*W;
+  const py=v=>H-0.08*H-((v-mn)/rng)*(H*0.82);
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,34,68,.055)'; ctx.lineWidth=1;
+  for(let g=1;g<5;g++){
+    const y=py(mn+rng*g/4);
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,80,100,.3)'; ctx.font = "500 8px 'IBM Plex Mono'";
-    ctx.textAlign = 'left'; ctx.fillText(fmtK(mn + rng*g/4), 4, y-3);
+    ctx.fillStyle='rgba(255,80,100,.3)'; ctx.font="500 8px 'IBM Plex Mono'";
+    ctx.textAlign='left'; ctx.fillText(fmtK(mn+rng*g/4),4,y-3);
   }
-  const grad = ctx.createLinearGradient(0,0,0,H);
-  grad.addColorStop(0, ft); grad.addColorStop(0.7, 'rgba(0,0,0,0)');
-  ctx.beginPath(); ctx.moveTo(px(0), py(data[0]));
-  data.forEach((v,i) => ctx.lineTo(px(i), py(v)));
-  ctx.lineTo(px(data.length-1), H); ctx.lineTo(0, H); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-  ctx.save(); ctx.shadowColor = gc; ctx.shadowBlur = 10;
-  ctx.strokeStyle = lc; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(px(0), py(data[0]));
-  data.forEach((v,i) => ctx.lineTo(px(i), py(v)));
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,ft); grad.addColorStop(0.7,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.moveTo(px(0),py(data[0]));
+  data.forEach((v,i)=>ctx.lineTo(px(i),py(v)));
+  ctx.lineTo(px(data.length-1),H); ctx.lineTo(0,H); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+  ctx.save(); ctx.shadowColor=gc; ctx.shadowBlur=10;
+  ctx.strokeStyle=lc; ctx.lineWidth=1.5; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(px(0),py(data[0]));
+  data.forEach((v,i)=>ctx.lineTo(px(i),py(v)));
   ctx.stroke(); ctx.restore();
-  const curY = py(data[data.length-1]);
-  ctx.strokeStyle = 'rgba(255,34,68,.22)'; ctx.lineWidth = 1; ctx.setLineDash([3,5]);
-  ctx.beginPath(); ctx.moveTo(0, curY); ctx.lineTo(W, curY); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = 'rgba(255,34,68,.65)'; ctx.font = "600 9px 'IBM Plex Mono'";
-  ctx.textAlign = 'right'; ctx.fillText('$'+fmt(data[data.length-1], 0), W-4, curY-4);
-  ctx.save(); ctx.shadowColor = lc; ctx.shadowBlur = 14; ctx.fillStyle = lc;
-  ctx.beginPath(); ctx.arc(px(data.length-1), curY, 4, 0, Math.PI*2); ctx.fill(); ctx.restore();
+  const curY=py(data[data.length-1]);
+  ctx.strokeStyle='rgba(192,78,1,.22)'; ctx.lineWidth=1; ctx.setLineDash([3,5]);
+  ctx.beginPath(); ctx.moveTo(0,curY); ctx.lineTo(W,curY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(192,78,1,.65)'; ctx.font="600 9px 'IBM Plex Mono'";
+  ctx.textAlign='right'; ctx.fillText('$'+fmt(data[data.length-1],0),W-4,curY-4);
+  ctx.save(); ctx.shadowColor=lc; ctx.shadowBlur=14; ctx.fillStyle=lc;
+  ctx.beginPath(); ctx.arc(px(data.length-1),curY,4,0,Math.PI*2); ctx.fill(); ctx.restore();
 }
 
-window.addEventListener('resize', () => {
-  if (window._lastPositions) drawChart(window._lastPositions);
-});
+window.addEventListener('resize', () => { if(window._lastPositions) drawChart(window._lastPositions); });
 
 // ── MAIN DATA LOADER
-async function loadAll(manual = false) {
-  const refreshBtn = document.getElementById('refreshBtn');
-  refreshBtn.disabled = true;
-  setStatus('loading', manual ? 'REFRESHING...' : 'CONNECTING...');
+async function loadAll(manual=false) {
+  const refreshBtn=document.getElementById('refreshBtn');
+  refreshBtn.disabled=true;
+  setStatus('loading', manual?'REFRESHING...':'CONNECTING...');
 
   try {
-    const res = await fetch('/api/redline');
-    if (!res.ok) throw new Error(`/api/redline returned ${res.status}`);
-    const d = await res.json();
+    const res=await fetch('/api/redline');
+    if(!res.ok) throw new Error(`/api/redline returned ${res.status}`);
+    const d=await res.json();
 
-    // ── Parse portfolio positions ──────────────────────────────────────────
-    let positions = [];
+    let positions=[];
     try {
-      const raw = typeof d.currentPortfolio === 'string'
-        ? JSON.parse(d.currentPortfolio)
-        : d.currentPortfolio;
-      positions = Array.isArray(raw) ? raw : [];
-    } catch (e) {
-      showError('Failed to parse portfolio: ' + e.message);
-    }
+      const raw=typeof d.currentPortfolio==='string'?JSON.parse(d.currentPortfolio):d.currentPortfolio;
+      positions=Array.isArray(raw)?raw:[];
+    } catch(e){ showError('Failed to parse portfolio: '+e.message); }
 
-    // ── Parse orders ───────────────────────────────────────────────────────
-    let ordersData = { orders: [] };
+    let ordersData={orders:[]};
     try {
-      const raw = typeof d.accountOrders24h === 'string'
-        ? JSON.parse(d.accountOrders24h)
-        : d.accountOrders24h;
-      ordersData = raw || { orders: [] };
-    } catch (e) {
-      ordersData = { orders: [] };
-    }
+      const raw=typeof d.accountOrders24h==='string'?JSON.parse(d.accountOrders24h):d.accountOrders24h;
+      ordersData=raw||{orders:[]};
+    } catch(e){ ordersData={orders:[]}; }
 
-    // ── Market quotes (yfinance) ───────────────────────────────────────────
-    // Shape: { SPY: { symbol, name, price, changePct, history }, QQQ: {...}, ... }
-    const quotes = d.yfinance?.quotes ?? null;
+    const quotes   = d.yfinance?.quotes ?? null;
+    const bp       = d.buyingPower ?? null;
+    const totalValue=d.accountTotalValue ?? null;
 
-    // ── Buying power ───────────────────────────────────────────────────────
-    const bp = d.buyingPower ?? null;
-    document.getElementById('buyingPwr').textContent = bp != null ? '$' + fmt(bp, 0) : '—';
+    document.getElementById('buyingPwr').textContent = bp!=null ? '$'+fmt(bp,0) : '—';
 
-    // ── Total value ────────────────────────────────────────────────────────
-    const totalValue = d.accountTotalValue ?? null;
-
-    // ── Build all UI panels ────────────────────────────────────────────────
     buildTicker(quotes);
     buildMarket(quotes);
     buildPortfolioHeader(positions, totalValue);
     buildPositions(positions, quotes);
     buildOrders(ordersData);
     drawChart(positions);
-    window._lastPositions = positions;
+    window._lastPositions=positions;
 
-    // Timestamp
     document.getElementById('lastUpdated').textContent =
-      'LAST UPDATED: ' + new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-      });
+      'LAST UPDATED: '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
-    setStatus('live', 'MARKET OPEN · LIVE DATA');
+    setStatus('live','MARKET OPEN · LIVE DATA');
     document.getElementById('errorBanner').classList.remove('show');
 
-  } catch (err) {
-    setStatus('error', 'CONNECTION ERROR');
+  } catch(err) {
+    setStatus('error','CONNECTION ERROR');
     showError(err.message);
-    console.error('[REDLINE] Load failed:', err);
+    console.error('[REDLINE] Load failed:',err);
   } finally {
-    refreshBtn.disabled = false;
+    refreshBtn.disabled=false;
   }
 }
 
-
-// ── INIT + AUTO-REFRESH (every 5 min)
-
-//Delay for the first sweep
-setTimeout(() => loadAll(), 60000)
-
-setInterval(() => loadAll(), 5 * 60 * 1000);
+// Delay first load until after the initial sweep completes
+setTimeout(()=>loadAll(), 60000);
+setInterval(()=>loadAll(), 5*60*1000);
 </script>
 </body>
 </html>
