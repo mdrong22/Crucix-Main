@@ -312,42 +312,41 @@ app.get('/api/locales', (req, res) => {
 });
 
 app.get('/api/redline', async (req, res) => {
-  // ── yFinance quotes — pulled from currentData set during sweep ───────────
-  // Shape from yfinance.mjs: currentData.yfinance.quotes = { SPY: {...}, QQQ: {...} }
-  // Frontend buildMarket() and buildTicker() both expect this quotes object
-  const yfinanceQuotes = currentData?.yfinance?.quotes ?? null;
-  const [currentPort, accountHoldings, orders24h, totalVal, buyPower] = await Promise.all
-  ([
-    snapTrade.FetchUserTrades(), 
-    snapTrade.getBuyDates(), 
-    snapTrade.FetchAccountOrders24h(), 
-    snapTrade.FetchAccountTotalValue(), 
-    snapTrade.FetchAccountBuyingPower()
-  ])
-  
-  let parsedOrders = [];
   try {
-    const raw = JSON.parse(orders24h);
-    // SnapTrade usually returns an array directly, or an object with an 'orders' key
-    parsedOrders = Array.isArray(raw) ? raw : (raw?.orders || []);
-  } catch (e) {
-    console.error("[REDLINE] Failed to parse 24h orders:", e.message);
-    parsedOrders = [];
-  }
-  res.json({
-    // Account data
-    currentPortfolio:       currentPort,       // JSON string → frontend parses
-    accountCurrentHoldings: accountHoldings,
-    accountOrders24h:       { orders: parsedOrders },                            // normalized to { orders: [] }
-    accountTotalValue:      totalVal,
-    buyingPower:            buyPower || null,  // cached number, not async call
+    const yfinanceQuotes = currentData?.yfinance?.quotes ?? null;
 
-    // Market data — feeds buildMarket() and buildTicker()
-    // Frontend reads: crucixData.yfinance?.quotes
-    yfinance: {
-      quotes: yfinanceQuotes,
-    },
-  });
+    // Fetch all data points. Note: currentPort and orders24h are now OBJECTS/ARRAYS, not strings.
+    const [currentPort, accountHoldings, orders24h, totalVal, buyPower] = await Promise.all([
+      snapTrade.FetchUserTrades(), 
+      snapTrade.getBuyDates(), 
+      snapTrade.FetchAccountOrders24h(), 
+      snapTrade.FetchAccountTotalValue(), 
+      snapTrade.FetchAccountBuyingPower()
+    ]);
+
+    // Since snapTrade.FetchAccountOrders24h() now returns a cleaned array, 
+    // we don't need to JSON.parse it here anymore.
+    const normalizedOrders = Array.isArray(orders24h) ? orders24h : [];
+
+    res.json({
+      // Account data - All fields sent as native JSON for the frontend to consume
+      currentPortfolio: currentPort,           // Now an array of cleaned position objects
+      accountCurrentHoldings: accountHoldings, // Raw details for history/dates
+      accountOrders24h: { 
+        orders: normalizedOrders 
+      },                                       // Normalized structure { orders: [] }
+      accountTotalValue: totalVal,
+      buyingPower: buyPower || 0,
+
+      // Market data
+      yfinance: {
+        quotes: yfinanceQuotes,
+      },
+    });
+  } catch (error) {
+    console.error("[REDLINE API] Fatal Error:", error.message);
+    res.status(500).json({ error: "Internal Server Error", details: error.message });
+  }
 });
 
 // SSE: live updates

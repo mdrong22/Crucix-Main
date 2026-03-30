@@ -59,7 +59,7 @@ redline: {
     apiKey: process.env.PUTER_AUTH_TOKEN,
     model: process.env.NVIDIA_MODEL,
     baseUrl: process.env.NVIDIA_BASE_URL,
-    enableThinking: false
+    enableThinking: true
   },
 },
 
