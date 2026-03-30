@@ -716,6 +716,8 @@ async function loadAll(manual = false) {
 
 
 // ── INIT + AUTO-REFRESH (every 5 min)
+
+//Delay for the first sweep
 setTimeout(() => loadAll(), 60000)
 
 setInterval(() => loadAll(), 5 * 60 * 1000);
