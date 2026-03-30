@@ -515,7 +515,7 @@ async function runPortfolio() {
 async function CheckDebateCycle(context) {
     const buyingPower = await snapTrade.FetchAccountBuyingPower()
     const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
-    console.log(`[SCOUT] ${result}`)
+  //  console.log(`[SCOUT] ${result}`)
     if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
