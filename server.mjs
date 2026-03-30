@@ -55,10 +55,12 @@ const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
 const getLiveQuote = snapTrade.GetLiveQuote.bind(snapTrade);
-const scout = new ScoutLLM(config.scout, getLiveQuote);
-const bull = new PhiLLM(config.phi || {})
-const bear = new ThetaLLM(config.theta)
-const omega = new GregorLLM(config.omega)
+const redLineEnabled = config.redline.enabled
+
+const scout = new ScoutLLM(config.redline.scout, getLiveQuote);
+const bull = new PhiLLM(config.redline.phi || {})
+const bear = new ThetaLLM(config.redline.theta)
+const omega = new GregorLLM(config.redline.omega)
 const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
@@ -89,6 +91,7 @@ if (telegramAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
+      `REDLINE: ${redLineEnabled}`
       `Dashboard: http://localhost:${config.port}`,
     ].join('\n');
   });
@@ -442,7 +445,7 @@ async function runSweepCycle() {
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
-    await CheckDebateCycle(currentContext || [])
+    if(redLineEnabled) await CheckDebateCycle(currentContext || [])
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
 
@@ -555,7 +558,8 @@ async function start() {
   ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(32)}║
   ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 25 : 24)}║
   ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 24)}║
-  ║  SnapTrader: ${config.snapTrade?.accountId ? 'enabled' : 'disabled'}${' '.repeat(config.snapTrade.accountId ? 25 : 24)}║
+  ║  SnapTrade:  ${config.snapTrade?.accountId ? 'enabled' : 'disabled'}${' '.repeat(config.snapTrade.accountId ? 25 : 24)}║
+  ║  REDLINE:    ${redLineEnabled ? 'enabled' : 'disabled'}${' '.repeat(redLineEnabled ? 25 : 24)}║
   ╚══════════════════════════════════════════════╝
   `);
 

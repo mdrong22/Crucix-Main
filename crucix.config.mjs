@@ -35,7 +35,8 @@ export default {
     accountId: process.env.SNAPTRADE_ACCOUNT_ID || null,
     authId: process.env.SNAPTRADE_AUTH_ID || null ,
   },
-
+redline: {
+  enabled: true,
   phi: {
     apiKey: process.env.GROQ_API_KEY || null,
     model: process.env.GROQ_MODEL || null,
@@ -57,8 +58,10 @@ export default {
   omega: {
     apiKey: process.env.PUTER_AUTH_TOKEN,
     model: process.env.NVIDIA_MODEL,
-    baseUrl: process.env.NVIDIA_BASE_URL
+    baseUrl: process.env.NVIDIA_BASE_URL,
+    enableThinking: false
   },
+},
 
   
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs
