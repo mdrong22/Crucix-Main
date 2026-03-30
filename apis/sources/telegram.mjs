@@ -370,6 +370,8 @@ export async function briefing() {
   };
 }
 
+
+
 // ─── CLI runner ─────────────────────────────────────────────────────────────
 
 if (process.argv[1]?.endsWith('telegram.mjs')) {

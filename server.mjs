@@ -530,10 +530,10 @@ async function CheckDebateCycle(context) {
     }
     
     console.log("[REDLINE] Order Executed ✅:", orderRes);
-    telegramAlerter.sendAlert(`${trade.action} ${trade.units} units of ${trade.symbol} at $${trade.price}`)
+    telegramAlerter.sendTradeAlert(trade)
     const scribe = new GeminiProvider(config.scout)
     const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
-    await generateLocalReport(trade.symbol, trade.transcript, scribeReport)
+    await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text)
 }
     
     console.log(`${'='.repeat(60)}`)
