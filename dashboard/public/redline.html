@@ -675,7 +675,7 @@ async function loadAll(manual=false) {
 }
 
 // Delay first load until after the initial sweep completes
-setTimeout(()=>loadAll(), 60000);
+loadAll()
 setInterval(()=>loadAll(), 5*60*1000);
 </script>
 </body>

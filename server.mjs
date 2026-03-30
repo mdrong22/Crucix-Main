@@ -312,10 +312,6 @@ app.get('/api/locales', (req, res) => {
 });
 
 app.get('/api/redline', async (req, res) => {
-  if (!currentData) {
-    return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  }
-
   // ── yFinance quotes — pulled from currentData set during sweep ───────────
   // Shape from yfinance.mjs: currentData.yfinance.quotes = { SPY: {...}, QQQ: {...} }
   // Frontend buildMarket() and buildTicker() both expect this quotes object
@@ -328,16 +324,21 @@ app.get('/api/redline', async (req, res) => {
     snapTrade.FetchAccountTotalValue(), 
     snapTrade.FetchAccountBuyingPower()
   ])
-  const orders = Array.isArray(orders24h)
-    ? orders24h
-    : Array.isArray(orders24h?.orders)
-      ? orders24h.orders
-      : [];
+  
+  let parsedOrders = [];
+  try {
+    const raw = JSON.parse(orders24h);
+    // SnapTrade usually returns an array directly, or an object with an 'orders' key
+    parsedOrders = Array.isArray(raw) ? raw : (raw?.orders || []);
+  } catch (e) {
+    console.error("[REDLINE] Failed to parse 24h orders:", e.message);
+    parsedOrders = [];
+  }
   res.json({
     // Account data
     currentPortfolio:       currentPort,       // JSON string → frontend parses
     accountCurrentHoldings: accountHoldings,
-    accountOrders24h:       { orders },                            // normalized to { orders: [] }
+    accountOrders24h:       { orders: parsedOrders },                            // normalized to { orders: [] }
     accountTotalValue:      totalVal,
     buyingPower:            buyPower || null,  // cached number, not async call
 
