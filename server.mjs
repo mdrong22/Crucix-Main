@@ -329,7 +329,7 @@ app.get('/api/redline', async (req, res) => {
     res.json({
       // Account data - All fields sent as native JSON for the frontend to consume
       currentPortfolio: currentPort,           // Now an array of cleaned position objects
-      accountCurrentHoldings: JSON.parse(accountHoldings), // Raw details for history/dates
+      accountCurrentHoldings: (accountHoldings), // Raw details for history/dates
       accountOrders24h: { 
         orders: normalizedOrders 
       },                                       // Normalized structure { orders: [] }
