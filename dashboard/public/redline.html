@@ -485,8 +485,7 @@ function buildOrders(ordersData){
     else if(sl==='cancelled'||sl==='rejected'){statusClass='pending';statusLabel=status.toUpperCase();}
 
     // For cleaned shape we may not have price/qty — show dashes gracefully
-    const filledQty =parseFloat(o.filled_quantity)||0;
-    const totalQty  =parseFloat(o.total_quantity)||0;
+    const filledQty =parseFloat(o.units)||0;
     const execPrice =o.price;
     const limitPrice=o.limit_price;
     const total     =filledQty*(execPrice||limitPrice||0);
