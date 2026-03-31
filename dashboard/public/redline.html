@@ -487,7 +487,7 @@ function buildOrders(ordersData){
     // For cleaned shape we may not have price/qty — show dashes gracefully
     const filledQty =parseFloat(o.filled_quantity)||0;
     const totalQty  =parseFloat(o.total_quantity)||0;
-    const execPrice =o.execution_price;
+    const execPrice =o.price;
     const limitPrice=o.limit_price;
     const total     =filledQty*(execPrice||limitPrice||0);
     const pfx       =isBuy?'-$':'+$';
