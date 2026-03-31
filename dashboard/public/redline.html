@@ -491,7 +491,7 @@ function buildOrders(ordersData){
     const limitPrice=o.limit_price;
     const total     =filledQty*(execPrice||limitPrice||0);
     const pfx       =isBuy?'-$':'+$';
-    const timeStr   =o.time_executed||o.time_placed||'';
+    const timeStr   =o.time ||'';
     const timeFmt   =timeStr?new Date(timeStr).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
     const detail    =execPrice?`${filledQty} units @ $${fmt(execPrice,2)}`:limitPrice?`Limit $${fmt(limitPrice,2)} · ${orderType}`:orderType;
 
