@@ -468,12 +468,12 @@ function buildPositions(positions, quotes) {
   if (quotes) Object.values(quotes).forEach(q => { if(q&&q.symbol) quoteLookup[q.symbol]=q; });
 
   grid.innerHTML = positions.map(p => {
-    const ticker   = p.symbol?.symbol?.symbol || p.symbol?.symbol?.raw_symbol || '???';
+    const ticker   = p.symbol || p.symbol?.symbol?.raw_symbol || '???';
     const desc     = p.symbol?.symbol?.description || '';
     const price    = p.price || 0;
     const units    = p.units || 0;
     const cost     = p.average_purchase_price || 0;
-    const pnl      = p.open_pnl || 0;
+    const pnl      = p.pnl_pct || 0;
     const mktVal   = price * units;
     const pnlUp    = pnl >= 0;
     const q        = quoteLookup[ticker];
@@ -623,54 +623,97 @@ function drawChart(positions) {
 window.addEventListener('resize', () => { if(window._lastPositions) drawChart(window._lastPositions); });
 
 // ── MAIN DATA LOADER
-async function loadAll(manual=false) {
-  const refreshBtn=document.getElementById('refreshBtn');
-  refreshBtn.disabled=true;
-  setStatus('loading', manual?'REFRESHING...':'CONNECTING...');
+/**
+ * loadAll - Refined to handle pre-cleaned data from the updated RedLine API.
+ * The server now sends native JSON objects instead of stringified SnapTrade blobs.
+ */
+ /**
+ * loadAll - Refined to handle pre-cleaned data from the updated RedLine API.
+ * Updated to handle the specific SnapTrade "orders" wrapper and cleaned portfolio objects.
+ */
+async function loadAll(manual = false) {
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (refreshBtn) refreshBtn.disabled = true;
+  
+  setStatus('loading', manual ? 'REFRESHING...' : 'CONNECTING...');
 
   try {
-    const res=await fetch('/api/redline');
-    if(!res.ok) throw new Error(`/api/redline returned ${res.status}`);
-    const d=await res.json();
+    const res = await fetch('/api/redline');
+    if (!res.ok) throw new Error(`/api/redline returned ${res.status}`);
+    
+    const d = await res.json();
 
-    let positions=[];
-    try {
-      const raw=typeof d.currentPortfolio==='string'?JSON.parse(d.currentPortfolio):d.currentPortfolio;
-      positions=Array.isArray(raw)?raw:[];
-    } catch(e){ showError('Failed to parse portfolio: '+e.message); }
+    // 1. DATA ASSIGNMENT
+    // Portfolio: Handles both stringified and direct object forms
+    let positions = [];
+    const rawPort = d.currentPortfolio;
+    if (Array.isArray(rawPort)) {
+        positions = rawPort;
+    } else if (typeof rawPort === 'string') {
+        try { positions = JSON.parse(rawPort); } catch(e) { positions = []; }
+    } else if (rawPort && typeof rawPort === 'object') {
+        // If it's a single cleaned object, wrap it in an array
+        positions = [rawPort];
+    }
 
-    let ordersData={orders:[]};
-    try {
-      const raw=typeof d.accountOrders24h==='string'?JSON.parse(d.accountOrders24h):d.accountOrders24h;
-      ordersData=raw||{orders:[]};
-    } catch(e){ ordersData={orders:[]}; }
+    // Orders: Based on your log, this contains { orders: [...] }
+    let ordersData = { orders: [] };
+    const rawOrders = d.accountOrders24h;
+    
+    if (rawOrders) {
+        if (typeof rawOrders === 'string') {
+            try {
+                const parsed = JSON.parse(rawOrders);
+                ordersData = Array.isArray(parsed.orders) ? parsed : { orders: Array.isArray(parsed) ? parsed : [] };
+            } catch(e) { ordersData = { orders: [] }; }
+        } else {
+            // Already an object
+            ordersData = Array.isArray(rawOrders.orders) ? rawOrders : { orders: Array.isArray(rawOrders) ? rawOrders : [] };
+        }
+    }
 
-    const quotes   = d.yfinance?.quotes ?? null;
-    const bp       = d.buyingPower ?? null;
-    const totalValue=d.accountTotalValue ?? null;
+    // Market and Account metrics
+    const quotes = d.yfinance?.quotes ?? null;
+    const bp = d.buyingPower ?? 0;
+    const totalValue = d.accountTotalValue ?? 0;
 
-    document.getElementById('buyingPwr').textContent = bp!=null ? '$'+fmt(bp,0) : '—';
+    // 2. UI UPDATES
+    const buyingPwrEl = document.getElementById('buyingPwr');
+    if (buyingPwrEl) {
+        // fmt(bp, 2) ensures we see the cents in the buying power
+        buyingPwrEl.textContent = bp != null ? '$' + fmt(bp, 2) : '—';
+    }
 
+    // Pass data to component builders
     buildTicker(quotes);
     buildMarket(quotes);
     buildPortfolioHeader(positions, totalValue);
     buildPositions(positions, quotes);
     buildOrders(ordersData);
     drawChart(positions);
-    window._lastPositions=positions;
+    
+    window._lastPositions = positions;
 
-    document.getElementById('lastUpdated').textContent =
-      'LAST UPDATED: '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    // 3. STATUS BAR
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+    if (lastUpdatedEl) {
+        lastUpdatedEl.textContent = 'LAST UPDATED: ' + new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
 
-    setStatus('live','MARKET OPEN · LIVE DATA');
-    document.getElementById('errorBanner').classList.remove('show');
+    setStatus('live', 'MARKET OPEN · LIVE DATA');
+    const errorBanner = document.getElementById('errorBanner');
+    if (errorBanner) errorBanner.classList.remove('show');
 
-  } catch(err) {
-    setStatus('error','CONNECTION ERROR');
+  } catch (err) {
+    setStatus('error', 'CONNECTION ERROR');
     showError(err.message);
-    console.error('[REDLINE] Load failed:',err);
+    console.error('[REDLINE] Load failed:', err);
   } finally {
-    refreshBtn.disabled=false;
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 

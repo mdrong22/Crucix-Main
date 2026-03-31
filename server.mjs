@@ -323,15 +323,13 @@ app.get('/api/redline', async (req, res) => {
       snapTrade.FetchAccountTotalValue(), 
       snapTrade.FetchAccountBuyingPower()
     ]);
-
     // Since snapTrade.FetchAccountOrders24h() now returns a cleaned array, 
     // we don't need to JSON.parse it here anymore.
     const normalizedOrders = Array.isArray(orders24h) ? orders24h : [];
-
     res.json({
       // Account data - All fields sent as native JSON for the frontend to consume
       currentPortfolio: currentPort,           // Now an array of cleaned position objects
-      accountCurrentHoldings: accountHoldings, // Raw details for history/dates
+      accountCurrentHoldings: JSON.parse(accountHoldings), // Raw details for history/dates
       accountOrders24h: { 
         orders: normalizedOrders 
       },                                       // Normalized structure { orders: [] }
@@ -404,7 +402,7 @@ async function runSweepCycle() {
         console.log('[Crucix] Generating LLM trade ideas...');
         
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const {llmIdeas, context} = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders);
+        const {llmIdeas, context} = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders);
         currentContext = context
         if (llmIdeas) {
           synthesized.ideas = llmIdeas;
@@ -492,7 +490,7 @@ async function runPortfolio() {
     let result;
     try {
     const [accountOrders, portfolio] = await Promise.all([snapTrade.getBuyDates(),snapTrade.FetchUserTrades()]);
-    result = await runPortfolioBrief(llmProvider, synthesized, delta, previousIdeas, portfolio, accountOrders )
+    result = await runPortfolioBrief(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(portfolio), accountOrders )
     return result.text
     } catch(err) {
       console.error("Failed to get Portfolio Briefing: ", err.message, '\n', (result.text))
@@ -513,7 +511,7 @@ async function runPortfolio() {
 
 async function CheckDebateCycle(context) {
     const buyingPower = await snapTrade.FetchAccountBuyingPower()
-    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
+    const result = await scout.assessInfo(context, currentData, JSON.stringify(snapTrade.GetCurrentPortfolio()), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
   //  console.log(`[SCOUT] ${result}`)
     if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
