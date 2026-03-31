@@ -550,6 +550,7 @@ async function CheckDebateCycle(context) {
     telegramAlerter.sendTradeAlert(trade)
     const scribe = new GeminiProvider(config.scout)
     const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
+    console.log(`SCribe Report ${scribeReport}`)
     await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text)
 }
     
