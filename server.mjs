@@ -511,18 +511,30 @@ async function runPortfolio() {
 
 async function CheckDebateCycle(context) {
     const buyingPower = await snapTrade.FetchAccountBuyingPower()
-    const result = await scout.assessInfo(context, currentData, JSON.stringify(snapTrade.GetCurrentPortfolio()), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
+    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower );
   //  console.log(`[SCOUT] ${result}`)
     if (!result) return;
     if (result.toUpperCase().includes("QUIET")) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
         return; // Exit the function here
     }
-    const regex = /Ticker:\*\*\s*(?<ticker>.*)\n.*Trigger:\*\*\s*(?<trigger>.*)\n.*The Data:\*\*\s*(?<data>.*)/;
-    const match = result.match(regex);
-    if (match) {
-      const { ticker, trigger, data } = match.groups;
-      lastDecision = {ticker, trigger, data , date: new Date()}
+    const tickerMatch  = result.match(/Ticker:\*\*\s*(?<ticker>.*)/i);
+    const triggerMatch = result.match(/Trigger:\*\*\s*(?<trigger>.*)/i);
+    const dataMatch    = result.match(/The Data:\*\*\s*(?<data>.*)/i);
+
+    if (tickerMatch && triggerMatch && dataMatch) {
+        const ticker = tickerMatch.groups.ticker.trim();
+        const trigger = triggerMatch.groups.trigger.trim();
+        const data = dataMatch.groups.data.trim();
+
+        lastDecision = {
+            ticker, 
+            trigger, 
+            data, 
+            date: new Date()
+        };
+      } else {
+        console.warn("[REDLINE] Scout Escalated but Regex failed to capture groups. Raw Result:", result);
     }
     console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
     const trade = await debate.beginDebate(result, context);
