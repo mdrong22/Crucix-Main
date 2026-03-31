@@ -116,9 +116,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   backdrop-filter:blur(20px);position:relative;overflow:hidden}
 .pf-header::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,var(--red),transparent)}
-.pf-watermark{position:absolute;right:16px;top:50%;transform:translateY(-50%);
-  font-family:var(--orb);font-size:72px;font-weight:900;color:rgba(255,34,68,0.03);
-  letter-spacing:0.06em;pointer-events:none;white-space:nowrap;line-height:1}
 .pf-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .pf-eyebrow{font-family:var(--orb);font-size:8px;letter-spacing:0.18em;color:rgba(255,80,100,0.5);margin-bottom:8px}
 .pf-value{font-family:var(--orb);font-size:44px;font-weight:700;color:#fff;line-height:1;
@@ -136,6 +133,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .chart-wrap{position:relative;height:190px;margin-top:12px}
 #mainChart{width:100%;height:100%}
 .last-updated{font-family:var(--mono);font-size:8px;color:rgba(255,80,100,0.25);letter-spacing:0.05em;text-align:right;padding:4px 0 0}
+
+/* ── WIN/LOSS GAUGE ── */
+.wl-gauge-wrap{
+  position:absolute;
+  bottom:16px;right:20px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  z-index:2;
+}
+.wl-gauge-svg{width:88px;height:88px;filter:drop-shadow(0 0 10px rgba(57,255,110,0.15))}
+.wl-gauge-center{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-44%);
+  text-align:center;pointer-events:none;
+}
+.wl-pct-val{
+  font-family:var(--orb);font-size:17px;font-weight:700;line-height:1;
+  transition:color 0.5s;
+}
+.wl-pct-lbl{font-family:var(--mono);font-size:7px;letter-spacing:0.1em;color:rgba(255,100,120,0.45);margin-top:1px;text-transform:uppercase}
+.wl-legend{display:flex;gap:10px}
+.wl-leg-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:8px;letter-spacing:0.05em}
+.wl-leg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.wl-leg-dot.w{background:var(--green);box-shadow:0 0 5px var(--green-glow)}
+.wl-leg-dot.l{background:var(--retro-orange);box-shadow:0 0 5px rgba(192,78,1,0.5)}
+.wl-leg-val{font-weight:600}
 
 /* ── MARKET OVERVIEW ── */
 .mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}
@@ -197,7 +218,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .empty-state{padding:28px;text-align:center;font-family:var(--mono);font-size:10px;color:rgba(255,100,120,0.3);letter-spacing:0.08em}
 
 @media(max-width:1100px){.layout{grid-template-columns:1fr}}
-@media(max-width:700px){.pos-grid{grid-template-columns:1fr 1fr}.mkt-grid{grid-template-columns:repeat(2,1fr)}.pf-value{font-size:32px}}
+@media(max-width:700px){
+  .pos-grid{grid-template-columns:1fr 1fr}.mkt-grid{grid-template-columns:repeat(2,1fr)}.pf-value{font-size:32px}
+  .wl-gauge-wrap{position:relative;bottom:auto;right:auto;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
+}
 </style>
 </head>
 <body>
@@ -236,7 +260,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 
       <div class="pf-header">
         <div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
-        <div class="pf-watermark">PROJECT REDLINE</div>
+
         <div class="pf-top">
           <div>
             <div class="pf-eyebrow">TOTAL PORTFOLIO VALUE</div>
@@ -253,8 +277,63 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
             <div class="pf-stat"><div class="pf-stat-lbl">LOSERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
           </div>
         </div>
+
         <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
         <div class="last-updated" id="lastUpdated"></div>
+
+        <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
+        <div class="wl-gauge-wrap" id="wlGaugeWrap">
+          <div style="position:relative;width:88px;height:88px">
+            <svg class="wl-gauge-svg" viewBox="0 0 88 88" id="wlGaugeSvg">
+              <!-- Tick marks around the ring -->
+              <g id="wlTicks" opacity="0.25"></g>
+              <!-- Background track -->
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="rgba(255,34,68,0.12)" stroke-width="7"/>
+              <!-- Loss arc (retro orange) — fills from top clockwise for loss % -->
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="#C04E01" stroke-width="7"
+                stroke-dasharray="213.6 213.6"
+                stroke-dashoffset="0"
+                stroke-linecap="round"
+                transform="rotate(-90 44 44)"
+                id="wlLossArc" opacity="0.5"/>
+              <!-- Win arc (green) — fills from top clockwise for win % -->
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="#39ff6e" stroke-width="7"
+                stroke-dasharray="0 213.6"
+                stroke-dashoffset="0"
+                stroke-linecap="round"
+                transform="rotate(-90 44 44)"
+                id="wlWinArc"
+                style="filter:drop-shadow(0 0 4px rgba(57,255,110,0.6));transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"/>
+              <!-- Inner glow ring -->
+              <circle cx="44" cy="44" r="27" fill="rgba(255,34,68,0.03)"
+                stroke="rgba(255,34,68,0.08)" stroke-width="1"/>
+              <!-- Center dot -->
+              <circle cx="44" cy="44" r="3" fill="rgba(255,34,68,0.4)" id="wlCenterDot"/>
+            </svg>
+            <!-- Center text overlay -->
+            <div class="wl-gauge-center">
+              <div class="wl-pct-val" id="wlPctVal" style="color:var(--green)">—</div>
+              <div class="wl-pct-lbl">WIN RATE</div>
+            </div>
+          </div>
+          <!-- Legend below gauge -->
+          <div class="wl-legend">
+            <div class="wl-leg-item">
+              <div class="wl-leg-dot w"></div>
+              <span style="color:rgba(255,150,170,0.4)">W</span>
+              <span class="wl-leg-val" id="wlWinCount" style="color:var(--green)">—</span>
+            </div>
+            <div class="wl-leg-item">
+              <div class="wl-leg-dot l"></div>
+              <span style="color:rgba(255,150,170,0.4)">L</span>
+              <span class="wl-leg-val" id="wlLossCount" style="color:var(--retro-orange)">—</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div class="panel">
@@ -295,26 +374,82 @@ tick();setInterval(tick,1000);
 const fmt=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtK=v=>v>=1000?'$'+(v/1000).toFixed(0)+'k':'$'+v.toFixed(0);
 const fmtPrice=v=>{if(v==null)return'—';const n=Number(v);return n>=1000?'$'+fmt(n,0):'$'+fmt(n,2)};
+const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n;};
 
-// ── Coerce strings returned from the cleaned API back to numbers safely
-const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+// ── SKELETONS
+const SKEL_MKT=Array(8).fill(0).map(()=>`<div class="mkt-card"><span class="skel" style="width:60px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:90px;height:8px;display:block;margin-bottom:8px"></span><span class="skel" style="width:70px;height:15px;display:block"></span></div>`).join('');
+const SKEL_POS=Array(6).fill(0).map(()=>`<div class="pos-card"><span class="skel" style="width:60px;height:14px;margin-bottom:6px"></span><span class="skel" style="width:100px;height:8px;display:block;margin-bottom:10px"></span><span class="skel" style="width:80px;height:17px;display:block"></span></div>`).join('');
+const SKEL_TX=Array(4).fill(0).map(()=>`<div class="tx-row other"><div class="tx-icon other">···</div><div class="tx-body"><span class="skel" style="width:120px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:80px;height:8px;display:block"></span></div></div>`).join('');
+document.getElementById('mktGrid').innerHTML=SKEL_MKT;
+document.getElementById('posGrid').innerHTML=SKEL_POS;
+document.getElementById('txScroll').innerHTML=SKEL_TX;
 
-// ── SKELETONS (injected by JS — never template literals in raw HTML)
-const SKEL_MKT = Array(8).fill(0).map(()=>`<div class="mkt-card"><span class="skel" style="width:60px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:90px;height:8px;display:block;margin-bottom:8px"></span><span class="skel" style="width:70px;height:15px;display:block"></span></div>`).join('');
-const SKEL_POS = Array(6).fill(0).map(()=>`<div class="pos-card"><span class="skel" style="width:60px;height:14px;margin-bottom:6px"></span><span class="skel" style="width:100px;height:8px;display:block;margin-bottom:10px"></span><span class="skel" style="width:80px;height:17px;display:block"></span></div>`).join('');
-const SKEL_TX  = Array(4).fill(0).map(()=>`<div class="tx-row other"><div class="tx-icon other">···</div><div class="tx-body"><span class="skel" style="width:120px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:80px;height:8px;display:block"></span></div></div>`).join('');
-document.getElementById('mktGrid').innerHTML  = SKEL_MKT;
-document.getElementById('posGrid').innerHTML  = SKEL_POS;
-document.getElementById('txScroll').innerHTML = SKEL_TX;
+// Build tick marks around the gauge ring
+(function buildTicks(){
+  const g=document.getElementById('wlTicks');
+  const cx=44,cy=44,r=34,tickCount=36;
+  for(let i=0;i<tickCount;i++){
+    const angle=(i/tickCount)*Math.PI*2-Math.PI/2;
+    const inner=r-5,outer=r+2;
+    const x1=cx+Math.cos(angle)*inner,y1=cy+Math.sin(angle)*inner;
+    const x2=cx+Math.cos(angle)*outer,y2=cy+Math.sin(angle)*outer;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',x1.toFixed(1));line.setAttribute('y1',y1.toFixed(1));
+    line.setAttribute('x2',x2.toFixed(1));line.setAttribute('y2',y2.toFixed(1));
+    line.setAttribute('stroke','rgba(255,34,68,0.5)');
+    line.setAttribute('stroke-width',i%4===0?'1.5':'0.8');
+    g.appendChild(line);
+  }
+})();
+
+// ── WIN/LOSS GAUGE UPDATE
+function updateWinLossGauge(winners,losers){
+  const total=winners+losers;
+  const winPct=total>0?Math.round((winners/total)*100):0;
+  const lossPct=100-winPct;
+  const circumference=2*Math.PI*34; // ≈213.63
+
+  const winArc=document.getElementById('wlWinArc');
+  const lossArc=document.getElementById('wlLossArc');
+  const pctVal=document.getElementById('wlPctVal');
+  const centerDot=document.getElementById('wlCenterDot');
+
+  // Win arc: draws clockwise from top
+  const winLen=(winPct/100)*circumference;
+  winArc.style.strokeDasharray=`${winLen.toFixed(2)} ${circumference.toFixed(2)}`;
+
+  // Loss arc: fills the remainder, offset to start right after win arc
+  const lossLen=(lossPct/100)*circumference;
+  lossArc.setAttribute('stroke-dasharray',`${lossLen.toFixed(2)} ${circumference.toFixed(2)}`);
+  // Offset loss arc to start where win arc ends (rotate by win degrees)
+  const winDeg=(winPct/100)*360;
+  lossArc.setAttribute('transform',`rotate(${winDeg-90} 44 44)`);
+
+  // Center label
+  const isGood=winPct>=50;
+  pctVal.textContent=winPct+'%';
+  pctVal.style.color=isGood?'var(--green)':'var(--retro-orange)';
+  pctVal.style.textShadow=isGood?'0 0 8px var(--green-glow)':'0 0 8px rgba(192,78,1,0.5)';
+
+  // Center dot pulses green or orange
+  centerDot.setAttribute('fill',isGood?'rgba(57,255,110,0.6)':'rgba(192,78,1,0.6)');
+
+  // Win arc glow color
+  winArc.setAttribute('stroke',isGood?'#39ff6e':'#C04E01');
+  winArc.style.filter=isGood?'drop-shadow(0 0 5px rgba(57,255,110,0.6))':'drop-shadow(0 0 5px rgba(192,78,1,0.5))';
+
+  document.getElementById('wlWinCount').textContent=winners;
+  document.getElementById('wlLossCount').textContent=losers;
+}
 
 function setStatus(state,txt){
   const dot=document.getElementById('statusDot'),lbl=document.getElementById('statusTxt');
-  dot.className='status-dot '+state; lbl.textContent=txt;
+  dot.className='status-dot '+state;lbl.textContent=txt;
   lbl.style.color=state==='error'?'rgba(255,34,68,0.7)':state==='loading'?'rgba(255,204,0,0.7)':'rgba(57,255,110,0.7)';
 }
 function showError(msg){
   const b=document.getElementById('errorBanner');
-  b.textContent='⚠ '+msg; b.classList.add('show');
+  b.textContent='⚠ '+msg;b.classList.add('show');
   setTimeout(()=>b.classList.remove('show'),8000);
 }
 function sparkPath(data,W,H){
@@ -353,15 +488,12 @@ function buildMarket(quotes){
 }
 
 // ── PORTFOLIO HEADER
-// NEW API shape: { symbol, units, price, avg_cost, pnl_pct, value }
-// All values come as strings — coerce with num()
 function buildPortfolioHeader(positions,totalValue){
-  // pnl_pct is a percentage — use value field for dollar-based P&L calc
-  const totalPnl  = positions.reduce((s,p)=>s+(num(p.value)-num(p.avg_cost)*num(p.units)),0);
-  const winners   = positions.filter(p=>num(p.pnl_pct)>0).length;
-  const losers    = positions.filter(p=>num(p.pnl_pct)<0).length;
-  const pnlUp     = totalPnl>=0;
-  const displayVal= totalValue!=null?totalValue:positions.reduce((s,p)=>s+num(p.value),0);
+  const totalPnl=positions.reduce((s,p)=>s+(num(p.value)-num(p.avg_cost)*num(p.units)),0);
+  const winners=positions.filter(p=>num(p.pnl_pct)>0).length;
+  const losers=positions.filter(p=>num(p.pnl_pct)<0).length;
+  const pnlUp=totalPnl>=0;
+  const displayVal=totalValue!=null?totalValue:positions.reduce((s,p)=>s+num(p.value),0);
 
   document.getElementById('pfValue').innerHTML=`$${fmt(displayVal,2)}`;
   const pfPnl=document.getElementById('pfPnl');
@@ -375,10 +507,13 @@ function buildPortfolioHeader(positions,totalValue){
     {lbl:'WINNERS',val:winners,cls:'up'},
     {lbl:'LOSERS',val:losers,cls:'dn'},
   ].map(s=>`<div class="pf-stat"><div class="pf-stat-lbl">${s.lbl}</div><div class="pf-stat-val ${s.cls}">${s.val}</div></div>`).join('');
+
+  // Update the win/loss gauge
+  // Slight delay so the CSS transition fires after render
+  setTimeout(()=>updateWinLossGauge(winners,losers),100);
 }
 
 // ── POSITIONS
-// NEW API shape: { symbol, units, price, avg_cost, pnl_pct, value }
 function buildPositions(positions,quotes){
   const grid=document.getElementById('posGrid');
   if(!positions||!positions.length){
@@ -386,49 +521,25 @@ function buildPositions(positions,quotes){
     document.getElementById('posCount').textContent='0 POSITIONS';
     return;
   }
-
   const quoteLookup={};
-  if(quotes) Object.values(quotes).forEach(q=>{if(q&&q.symbol)quoteLookup[q.symbol]=q;});
+  if(quotes)Object.values(quotes).forEach(q=>{if(q&&q.symbol)quoteLookup[q.symbol]=q;});
 
   grid.innerHTML=positions.map(p=>{
-    // ── Field mapping for cleaned API shape ──────────────────────────────────
-    // p.symbol  → the ticker string (e.g. "RTX", "AAPL")
-    // p.price   → current price (string, coerce with num())
-    // p.units   → number of shares (string)
-    // p.avg_cost→ average cost basis per share (string)
-    // p.pnl_pct → P&L as a percentage (string, e.g. "3.42" = 3.42%)
-    // p.value   → current market value of position (string)
-    const ticker  = typeof p.symbol === 'string' ? p.symbol : (p.symbol?.symbol || p.symbol?.raw_symbol || '???');
-    const price   = num(p.price);
-    const units   = num(p.units);
-    const avgCost = num(p.avg_cost);
-    const pnlPct  = num(p.pnl_pct);
-    const mktVal  = num(p.value) || price * units;
-    const pnlDollar= mktVal - (avgCost * units);
-    const pnlUp   = pnlPct >= 0;
-
-    // Change % — prefer live yFinance quote, fall back to pnl_pct from API
-    const q         = quoteLookup[ticker];
-    const changePct = q ? q.changePct : pnlPct;
-    const up        = changePct >= 0;
-
-    // Sparkline — prefer yFinance 5d history, else simulate cost→price path
+    const ticker=typeof p.symbol==='string'?p.symbol:(p.symbol?.symbol||p.symbol?.raw_symbol||'???');
+    const price=num(p.price),units=num(p.units),avgCost=num(p.avg_cost);
+    const pnlPct=num(p.pnl_pct),mktVal=num(p.value)||price*units;
+    const pnlDollar=mktVal-(avgCost*units),pnlUp=pnlPct>=0;
+    const q=quoteLookup[ticker];
+    const changePct=q?q.changePct:pnlPct,up=changePct>=0;
     let sparkData;
-    if(q&&q.history&&q.history.length>=2){
-      sparkData=q.history.map(h=>h.close);
-    } else {
-      sparkData=Array.from({length:8},(_,i)=>avgCost+((price-avgCost)*i/7)+(Math.random()-0.5)*price*0.005);
-    }
-    const sp    =sparkPath(sparkData,54,22);
-    const stroke=up?'#39ff6e':'#C04E01';
+    if(q&&q.history&&q.history.length>=2){sparkData=q.history.map(h=>h.close);}
+    else{sparkData=Array.from({length:8},(_,i)=>avgCost+((price-avgCost)*i/7)+(Math.random()-0.5)*price*0.005);}
+    const sp=sparkPath(sparkData,54,22),stroke=up?'#39ff6e':'#C04E01';
 
     return `<div class="pos-card ${up?'is-up':'is-dn'}">
       <div class="pos-ghost">${ticker}</div>
       <div class="pos-row1">
-        <div>
-          <div class="pos-ticker">${ticker}</div>
-          <div class="pos-name" title="${ticker}">${ticker}</div>
-        </div>
+        <div><div class="pos-ticker">${ticker}</div><div class="pos-name" title="${ticker}">${ticker}</div></div>
         ${sp?`<svg class="pos-spark-svg" viewBox="0 0 54 22" preserveAspectRatio="none">
           <path d="${sp}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
         </svg>`:'<div style="width:54px"></div>'}
@@ -444,86 +555,54 @@ function buildPositions(positions,quotes){
       </div>
     </div>`;
   }).join('');
-
   document.getElementById('posCount').textContent=positions.length+' POSITIONS';
 }
 
 // ── ORDERS
-// NEW API shape: { symbol, action, status, type }
 function buildOrders(ordersData){
   const scroll=document.getElementById('txScroll');
   const orders=ordersData?.orders||(Array.isArray(ordersData)?ordersData:[]);
-
   if(!orders.length){
     scroll.innerHTML='<div class="empty-state">NO ORDERS IN LAST 24H</div>';
-    document.getElementById('txCount').textContent='0 ORDERS';
-    return;
+    document.getElementById('txCount').textContent='0 ORDERS';return;
   }
-
   scroll.innerHTML=orders.map(o=>{
-    // NEW shape: { symbol, action, status, type }
-    // OLD shape (raw SnapTrade): { universal_symbol, action, status, order_type, ... }
-    // Handle both for resilience
-    const action   =(o.action||'ORDER').toLowerCase();
-    const isBuy    =action==='buy', isSell=action==='sell';
+    const action=(o.action||'ORDER').toLowerCase(),isBuy=action==='buy',isSell=action==='sell';
     const typeClass=isBuy?'buy':isSell?'sell':'other';
-
-    // Ticker: new shape has o.symbol as a string directly
-    const ticker = typeof o.symbol === 'string'
-      ? o.symbol
-      : (o.universal_symbol?.symbol || o.quote_universal_symbol?.symbol || '???');
-
-    // For the cleaned API, we don't have filled_quantity / execution_price
-    // so we show what we have: action, type, status
-    const orderType= o.type || o.order_type || 'Order';
-    const status   = o.status || '';
-    let statusClass='pending', statusLabel=status||'PENDING';
+    const ticker=typeof o.symbol==='string'?o.symbol:(o.universal_symbol?.symbol||o.quote_universal_symbol?.symbol||'???');
+    const orderType=o.type||o.order_type||'Order';
+    const status=o.status||'';let statusClass='pending',statusLabel=status||'PENDING';
     const sl=status.toLowerCase();
     if(sl==='executed'||sl==='filled'||sl==='complete'){statusClass='filled';statusLabel='FILLED';}
     else if(sl==='partial'||sl==='partially_filled'){statusClass='partial';statusLabel='PARTIAL';}
-    else if(sl==='pending'||sl==='open'){statusClass='pending';statusLabel='PENDING';}
     else if(sl==='cancelled'||sl==='rejected'){statusClass='pending';statusLabel=status.toUpperCase();}
-
-    // For cleaned shape we may not have price/qty — show dashes gracefully
-    const filledQty =parseFloat(o.units)||0;
-    const execPrice =o.price;
-    const limitPrice=o.limit_price;
-    const total     =filledQty*(execPrice||limitPrice||0);
-    const pfx       =isBuy?'-$':'+$';
-    const timeStr   =o.time ||'';
-    const timeFmt   =timeStr?new Date(timeStr).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-    const detail    =execPrice?`${filledQty} units @ $${fmt(execPrice,2)}`:limitPrice?`Limit $${fmt(limitPrice,2)} · ${orderType}`:orderType;
-
+    const filledQty=parseFloat(o.units)||0,execPrice=o.price,limitPrice=o.limit_price;
+    const total=filledQty*(execPrice||limitPrice||0),pfx=isBuy?'-$':'+$';
+    const timeStr=o.time||'',timeFmt=timeStr?new Date(timeStr).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    const detail=execPrice?`${filledQty} units @ $${fmt(execPrice,2)}`:limitPrice?`Limit $${fmt(limitPrice,2)} · ${orderType}`:orderType;
     return `<div class="tx-row ${typeClass}">
       <div class="tx-icon ${typeClass}">${(o.action||'ORD').toUpperCase().slice(0,4)}</div>
       <div class="tx-body">
-        <div class="tx-line1">
-          <span class="tx-ticker">${ticker}</span>
-          <span class="tx-amt ${typeClass}">${total>0?pfx+fmt(total,2):'—'}</span>
-        </div>
+        <div class="tx-line1"><span class="tx-ticker">${ticker}</span><span class="tx-amt ${typeClass}">${total>0?pfx+fmt(total,2):'—'}</span></div>
         <div class="tx-detail">${detail}</div>
         <div class="tx-time">${timeFmt}</div>
         <div class="tx-status ${statusClass}">${statusLabel}</div>
       </div>
     </div>`;
   }).join('');
-
   document.getElementById('txCount').textContent=orders.length+' ORDERS';
 }
 
 // ── CHART
 function genChartData(positions){
   const pts=40;
-  // Use new API fields: avg_cost * units = cost basis, value = current mkt val
   const totalCost=positions.reduce((s,p)=>s+num(p.avg_cost)*num(p.units),0);
-  const totalNow =positions.reduce((s,p)=>s+num(p.value||0)||num(p.price)*num(p.units),0);
+  const totalNow=positions.reduce((s,p)=>s+num(p.value||0)||num(p.price)*num(p.units),0);
   const data=[];let v=totalCost||1;
   const step=(totalNow-totalCost)/(pts*0.6);
   for(let i=0;i<pts;i++){v+=step+(Math.random()-0.48)*Math.abs(step||1)*2;data.push(v);}
-  data[data.length-1]=totalNow||v;
-  return data;
+  data[data.length-1]=totalNow||v;return data;
 }
-
 function drawChart(positions){
   const canvas=document.getElementById('mainChart');
   if(!canvas||!positions||!positions.length)return;
@@ -558,20 +637,17 @@ async function loadAll(manual=false){
   const refreshBtn=document.getElementById('refreshBtn');
   if(refreshBtn)refreshBtn.disabled=true;
   setStatus('loading',manual?'REFRESHING...':'CONNECTING...');
-
   try{
     const res=await fetch('/api/redline');
     if(!res.ok)throw new Error(`/api/redline returned ${res.status}`);
     const d=await res.json();
 
-    // Portfolio — new API returns cleaned array directly
     let positions=[];
     const rp=d.currentPortfolio;
     if(Array.isArray(rp))positions=rp;
     else if(typeof rp==='string'){try{const p=JSON.parse(rp);positions=Array.isArray(p)?p:[];}catch{positions=[];}}
     else if(rp&&typeof rp==='object')positions=[rp];
 
-    // Orders — server sends { orders: [...] }
     let ordersData={orders:[]};
     const ro=d.accountOrders24h;
     if(ro){
@@ -579,10 +655,7 @@ async function loadAll(manual=false){
       else ordersData=Array.isArray(ro.orders)?ro:{orders:Array.isArray(ro)?ro:[]};
     }
 
-    const quotes    =d.yfinance?.quotes??null;
-    const bp        =d.buyingPower??0;
-    const totalValue=d.accountTotalValue??null;
-
+    const quotes=d.yfinance?.quotes??null,bp=d.buyingPower??0,totalValue=d.accountTotalValue??null;
     const bpEl=document.getElementById('buyingPwr');
     if(bpEl)bpEl.textContent=bp!=null?'$'+fmt(bp,2):'—';
 
@@ -596,15 +669,10 @@ async function loadAll(manual=false){
 
     const lu=document.getElementById('lastUpdated');
     if(lu)lu.textContent='LAST UPDATED: '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-
     setStatus('live','MARKET OPEN · LIVE DATA');
-    const eb=document.getElementById('errorBanner');
-    if(eb)eb.classList.remove('show');
-
+    const eb=document.getElementById('errorBanner');if(eb)eb.classList.remove('show');
   }catch(err){
-    setStatus('error','CONNECTION ERROR');
-    showError(err.message);
-    console.error('[REDLINE] Load failed:',err);
+    setStatus('error','CONNECTION ERROR');showError(err.message);console.error('[REDLINE] Load failed:',err);
   }finally{
     if(refreshBtn)refreshBtn.disabled=false;
   }
