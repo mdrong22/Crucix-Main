@@ -220,7 +220,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 @media(max-width:1100px){.layout{grid-template-columns:1fr}}
 @media(max-width:700px){
   .pos-grid{grid-template-columns:1fr 1fr}.mkt-grid{grid-template-columns:repeat(2,1fr)}.pf-value{font-size:32px}
-  .wl-gauge-wrap{position:relative;bottom:auto;right:auto;left:19%;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
+  .wl-gauge-wrap{position:relative;bottom:auto;right:auto;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
 }
 </style>
 </head>
@@ -270,48 +270,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
               <div class="pf-period-lbl">OPEN P&L</div>
             </div>
           </div>
-            <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
-        <div class="wl-gauge-wrap" id="wlGaugeWrap">
-          <div style="position:relative;width:88px;height:88px">
-            <svg class="wl-gauge-svg" viewBox="0 0 88 88" id="wlGaugeSvg">
-              <!-- Tick marks around the ring -->
-              <g id="wlTicks" opacity="0.25"></g>
-              <!-- Background track -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="rgba(255,34,68,0.12)" stroke-width="7"/>
-              <!-- Loss arc (retro orange) — fills from top clockwise for loss % -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="#C04E01" stroke-width="7"
-                stroke-dasharray="213.6 213.6"
-                stroke-dashoffset="0"
-                stroke-linecap="round"
-                transform="rotate(-90 44 44)"
-                id="wlLossArc" opacity="0.5"/>
-              <!-- Win arc (green) — fills from top clockwise for win % -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="#39ff6e" stroke-width="7"
-                stroke-dasharray="0 213.6"
-                stroke-dashoffset="0"
-                stroke-linecap="round"
-                transform="rotate(-90 44 44)"
-                id="wlWinArc"
-                style="filter:drop-shadow(0 0 4px rgba(57,255,110,0.6));transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"/>
-              <!-- Inner glow ring -->
-              <circle cx="44" cy="44" r="27" fill="rgba(255,34,68,0.03)"
-                stroke="rgba(255,34,68,0.08)" stroke-width="1"/>
-              <!-- Center dot -->
-              <circle cx="44" cy="44" r="3" fill="rgba(255,34,68,0.4)" id="wlCenterDot"/>
-            </svg>
-            <!-- Center text overlay -->
-            <div class="wl-gauge-center">
-              <div class="wl-pct-val" id="wlPctVal" style="color:var(--green)">—</div>
-              <div class="wl-pct-lbl">WIN RATE</div>
-            </div>
-          </div>
-          <!-- Legend below gauge -->
-          
-            
-          </div>
           <div class="pf-stats" id="pfStats">
             <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu"><span class="skel" style="width:40px;height:20px"></span></div></div>
             <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val"><span class="skel" style="width:60px;height:20px"></span></div></div>
@@ -323,8 +281,52 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
         <div class="last-updated" id="lastUpdated"></div>
 
-      
-        </div>
+        <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
+   { <!--    <div class="wl-gauge-wrap" id="wlGaugeWrap">
+          <div style="position:relative;width:88px;height:88px">
+            <svg class="wl-gauge-svg" viewBox="0 0 88 88" id="wlGaugeSvg">
+            
+              <g id="wlTicks" opacity="0.25"></g>
+             
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="rgba(255,34,68,0.12)" stroke-width="7"/>
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="#C04E01" stroke-width="7"
+                stroke-dasharray="213.6 213.6"
+                stroke-dashoffset="0"
+                stroke-linecap="round"
+                transform="rotate(-90 44 44)"
+                id="wlLossArc" opacity="0.5"/>
+              <circle cx="44" cy="44" r="34" fill="none"
+                stroke="#39ff6e" stroke-width="7"
+                stroke-dasharray="0 213.6"
+                stroke-dashoffset="0"
+                stroke-linecap="round"
+                transform="rotate(-90 44 44)"
+                id="wlWinArc"
+                style="filter:drop-shadow(0 0 4px rgba(57,255,110,0.6));transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"/>
+              <circle cx="44" cy="44" r="27" fill="rgba(255,34,68,0.03)"
+                stroke="rgba(255,34,68,0.08)" stroke-width="1"/>
+              <circle cx="44" cy="44" r="3" fill="rgba(255,34,68,0.4)" id="wlCenterDot"/>
+            </svg>
+            <div class="wl-gauge-center">
+              <div class="wl-pct-val" id="wlPctVal" style="color:var(--green)">—</div>
+              <div class="wl-pct-lbl">WIN RATE</div>
+            </div>
+          </div>
+          <div class="wl-legend">
+            <div class="wl-leg-item">
+              <div class="wl-leg-dot w"></div>
+              <span style="color:rgba(255,150,170,0.4)">W</span>
+              <span class="wl-leg-val" id="wlWinCount" style="color:var(--green)">—</span>
+            </div>
+            <div class="wl-leg-item">
+              <div class="wl-leg-dot l"></div>
+              <span style="color:rgba(255,150,170,0.4)">L</span>
+              <span class="wl-leg-val" id="wlLossCount" style="color:var(--retro-orange)">—</span>
+            </div>
+          </div>
+        </div> -->
 
       </div>
 
