@@ -30,9 +30,9 @@ const SYMBOLS = {
   '^VIX': 'VIX',
 };
 
-async function fetchQuote(symbol) {
+async function fetchQuote(symbol, defaultInterval = `1d`) {
   try {
-    const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=true`;
+    const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=${defaultInterval}&includePrePost=true`;
     const data = await safeFetch(url, {
       timeout: 8000,
       headers: {
@@ -130,7 +130,7 @@ function pickGroup(quotes, symbols) {
 }
 
 export async function GetLiveQuote(ticker) {
-  const data = await fetchQuote(ticker);
+  const data = await fetchQuote(ticker, '1m');
   
   if (!data || data.error) {
     throw new Error(data?.error || `Failed to fetch live quote for ${ticker}`);
