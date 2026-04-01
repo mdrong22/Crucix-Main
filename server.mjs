@@ -61,7 +61,7 @@ const scout = new ScoutLLM(config.redline.scout, getLiveQuote);
 const bull = new PhiLLM(config.redline.phi || {})
 const bear = new ThetaLLM(config.redline.theta)
 const omega = new GregorLLM(config.redline.omega)
-const scribe = new GeminiProvider(config.redline.scout)
+const scribe = new GeminiProvider(config.redline.scribe)
 
 const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
 
@@ -520,20 +520,21 @@ async function CheckDebateCycle(context) {
         console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
         return; // Exit the function here
     }
-    const tickerMatch  = result.match(/Ticker:\*\*\s*(?<ticker>.*)/i);
-    const triggerMatch = result.match(/Trigger:\*\*\s*(?<trigger>.*)/i);
-    const dataMatch    = result.match(/The Data:\*\*\s*(?<data>.*)/i);
+    const tickerMatch  = result.match(/-\s*\*\*Ticker:\*\*\s*(?<ticker>[A-Z]+)/i);
+    const triggerMatch = result.match(/-\s*\*\*Trigger:\*\*\s*(?<trigger>.*)/i);
+    const dataMatch    = result.match(/-\s*\*\*The Data:\*\*\s*(?<data>.*)/i);
 
     if (tickerMatch && triggerMatch && dataMatch) {
         const ticker = tickerMatch.groups.ticker.trim();
         const trigger = triggerMatch.groups.trigger.trim();
         const data = dataMatch.groups.data.trim();
 
+        // Update the global/closure variable so the NEXT sweep sees it
         lastDecision = {
             ticker, 
             trigger, 
             data, 
-            date: new Date()
+            date: new Date().toLocaleString()
         };
       } else {
         console.warn("[REDLINE] Scout Escalated but Regex failed to capture groups. Raw Result:", result);

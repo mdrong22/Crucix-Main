@@ -55,6 +55,12 @@ redline: {
     baseUrl: process.env.THETA_BASE_URL
   },
 
+  scribe: {
+    apiKey: process.env.SCRIBE_API_KEY || null,
+    model: process.env.SCRIBE_MODEL || null,
+    baseUrl: process.env.GEMINI_BASE_URL || null
+  },
+
   omega: {
     apiKey: process.env.PUTER_AUTH_TOKEN,
     model: process.env.PUTER_MODEL,
