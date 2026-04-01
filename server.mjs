@@ -536,54 +536,72 @@ async function runPortfolio() {
 }
 
 async function CheckDebateCycle(context) {
-    const [buyingPower, openAccountOrders ]= await Promise.all([snapTrade.FetchAccountBuyingPower(), snapTrade.FetchOpenAccountOrders()]);
-    const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower, openAccountOrders );
-    console.log(`[SCOUT] ${result}`)
-    if (!result) return;
-    if (result.toUpperCase().includes("QUIET")) {
-        console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
-        return; // Exit the function here
-    }
-    const tickerMatch  = result.match(/-\s*\*\*Ticker:\*\*\s*(?<ticker>[A-Z]+)/i);
-    const triggerMatch = result.match(/-\s*\*\*Trigger:\*\*\s*(?<trigger>.*)/i);
-    const dataMatch    = result.match(/-\s*\*\*The Data:\*\*\s*(?<data>.*)/i);
-
-    if (tickerMatch && triggerMatch && dataMatch) {
-        const ticker = tickerMatch.groups.ticker.trim();
-        const trigger = triggerMatch.groups.trigger.trim();
-        const data = dataMatch.groups.data.trim();
-
-        // Update the global/closure variable so the NEXT sweep sees it
-        lastDecision = {
-            ticker, 
-            trigger, 
-            data, 
-            date: new Date().toLocaleString()
-        };
-      } else {
-        console.warn("[REDLINE] Scout Escalated but Regex failed to capture groups. Raw Result:", result);
-    }
-    console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-    const trade = await debate.beginDebate(result, context);
-    if (trade.action !== "WAIT") {
-    const orderRes = await snapTrade.PlaceOrder(trade);
-    
-    if (!orderRes) {
-        console.error("[REDLINE] ❌ Order failed — PlaceOrder returned null. Check logs above.");
-        return;
-    }
-    
-    console.log("[REDLINE] Order Executed ✅:", orderRes);
-    telegramAlerter.sendTradeAlert(trade)
-    const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript), {}, true)
-    console.log(`SCribe Report ${scribeReport}`)
-    await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text)
+  const [buyingPower, openAccountOrders] = await Promise.all([
+      snapTrade.FetchAccountBuyingPower(),
+      snapTrade.FetchOpenAccountOrders()
+  ]);
+  const result = await scout.assessInfo(
+      context,
+      currentData,
+      snapTrade.GetCurrentPortfolio(),
+      snapTrade.GetCurrentAcccountHoldings(),
+      lastDecision,
+      buyingPower,
+      openAccountOrders
+  );
+  console.log(`[SCOUT] ${result}`);
+  if (!result) return;
+  if (result.toUpperCase().includes("QUIET")) {
+      console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
+      return;
+  }
+  const tickerMatch = result.match(/-\s*\*\*Ticker:\*\*\s*\$?(?<ticker>[A-Z]+)/i);
+  const triggerMatch = result.match(/-\s*\*\*Trigger:\*\*\s*(?<trigger>.*)/i);
+  const dataMatch = result.match(/-\s*\*\*The Data:\*\*\s*(?<data>.*)/i);
+  if (tickerMatch && triggerMatch && dataMatch) {
+      lastDecision = {
+          ticker: tickerMatch.groups.ticker.trim(),
+          trigger: triggerMatch.groups.trigger.trim(),
+          data: dataMatch.groups.data.trim(),
+          date: new Date().toLocaleString()
+      };
+  } else {
+      console.warn("[REDLINE] Scout Escalated but Regex failed. Raw:", result);
+  }
+  console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
+  let debateResult = await debate.beginDebate(result, context);
+  const trades = Array.isArray(debateResult) ? debateResult : [debateResult];
+  const actionableTrades = trades.filter(t => t && t.action && t.action !== "WAIT");
+  if (actionableTrades.length === 0) {
+      console.log("[REDLINE] Council returned no actionable trades (Verdict: WAIT).");
+      return;
+  }
+  for (const trade of actionableTrades) {
+      console.log(`[REDLINE] Execution Triggered: ${trade.action} ${trade.symbol}`);
+      const orderRes = await snapTrade.PlaceOrder(trade);
+      if (!orderRes) {
+          console.error(`[REDLINE] ❌ Order failed for ${trade.symbol}. Aborting sequence.`);
+          break;
+      }
+      console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`, orderRes);
+      telegramAlerter.sendTradeAlert(trade);
+      try {
+          const scribeReport = await scribe.complete(
+              ScribePrompt,
+              JSON.stringify(trade.transcript),
+              { action: trade.action, ticker: trade.symbol },
+              true
+          );
+          if (scribeReport && scribeReport.text) {
+              console.log(`[SCRIBE] Report for ${trade.symbol}: ${scribeReport.text}`);
+              await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text);
+          }
+      } catch (scribeErr) {
+          console.error("[REDLINE] Scribe reporting failed, but trade was executed:", scribeErr.message);
+      }
+  }
+  console.log(`${'='.repeat(60)}`);
 }
-    
-    console.log(`${'='.repeat(60)}`)
-    
-}
-
 // === Startup ===
 async function start() {
   const port = config.port;
