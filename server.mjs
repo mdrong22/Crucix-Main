@@ -321,9 +321,9 @@ app.get('/api/redline', async (req, res) => {
     const [currentPort, accountHoldings, orders24h, totalVal, buyPower] = await Promise.all([
       snapTrade.FetchUserTrades(), 
       snapTrade.getBuyDates(), 
-      snapTrade.FetchAccountOrders24h(), 
+      snapTrade.FetchAccountOrders24h(false), 
       snapTrade.FetchAccountTotalValue(), 
-      snapTrade.FetchAccountBuyingPower()
+      snapTrade.FetchAccountBuyingPower(),
     ]);
     // Since snapTrade.FetchAccountOrders24h() now returns a cleaned array, 
     // we don't need to JSON.parse it here anymore.
@@ -334,7 +334,7 @@ app.get('/api/redline', async (req, res) => {
       accountCurrentHoldings: (accountHoldings), // Raw details for history/dates
       accountOrders24h: { 
         orders: normalizedOrders 
-      },                                       // Normalized structure { orders: [] }
+      },                                   // Normalized structure { orders: [] }
       accountTotalValue: totalVal,
       buyingPower: buyPower || 0,
 
