@@ -32,7 +32,7 @@ const SYMBOLS = {
 
 async function fetchQuote(symbol) {
   try {
-    const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
+    const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=true`;
     const data = await safeFetch(url, {
       timeout: 8000,
       headers: {
@@ -49,7 +49,7 @@ async function fetchQuote(symbol) {
     const timestamps = result.timestamp || [];
 
     // Get current price and previous close
-    const price = meta.regularMarketPrice ?? closes[closes.length - 1];
+    const price = meta.preMarketPrice || meta.postMarketPrice || meta.regularMarketPrice || closes[closes.length - 1];
     const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? closes[closes.length - 2];
     const change = price && prevClose ? price - prevClose : 0;
     const changePct = prevClose ? (change / prevClose) * 100 : 0;
