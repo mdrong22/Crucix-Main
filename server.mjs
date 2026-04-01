@@ -348,6 +348,30 @@ app.get('/api/redline', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 });
+// List all reports
+app.get('/api/reports', (req, res) => {
+  try {
+    const dir = join(process.cwd(), 'reports');
+    const files = readdirSync(dir)
+      .filter(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.html'))
+      .sort()
+      .reverse(); // newest first
+    res.json({ reports: files });
+  } catch (err) {
+    res.json({ reports: [] });
+  }
+});
+
+// Read a single report by filename
+app.get('/api/reports/:filename', (req, res) => {
+  try {
+    const safe = req.params.filename.replace(/[^a-zA-Z0-9._\-]/g, '');
+    const content = readFileSync(join(process.cwd(), 'reports', safe), 'utf8');
+    res.json({ content });
+  } catch (err) {
+    res.status(404).json({ error: 'Report not found' });
+  }
+});
 
 // SSE: live updates
 app.get('/events', (req, res) => {

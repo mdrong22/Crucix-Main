@@ -116,7 +116,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   backdrop-filter:blur(20px);position:relative;overflow:hidden}
 .pf-header::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,var(--red),transparent)}
+
+/* Value + gauge side by side */
 .pf-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.pf-value-block{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .pf-eyebrow{font-family:var(--orb);font-size:8px;letter-spacing:0.18em;color:rgba(255,80,100,0.5);margin-bottom:8px}
 .pf-value{font-family:var(--orb);font-size:44px;font-weight:700;color:#fff;line-height:1;
   letter-spacing:0.01em;text-shadow:0 0 40px rgba(255,34,68,0.2)}
@@ -125,6 +128,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .pf-chg.up{color:var(--green);border-color:rgba(57,255,110,0.4);background:rgba(57,255,110,0.07);text-shadow:0 0 8px var(--green-glow)}
 .pf-chg.dn{color:var(--retro-orange);border-color:var(--retro-orange-border);background:var(--retro-orange-dim)}
 .pf-period-lbl{font-family:var(--mono);font-size:9px;color:rgba(255,100,120,0.4);letter-spacing:0.1em;text-transform:uppercase}
+
+/* WIN/LOSS GAUGE — sits right of portfolio value */
+.wl-gauge-block{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;flex-shrink:0}
+.wl-gauge-svg{width:80px;height:80px}
+.wl-gauge-rel{position:relative;width:80px;height:80px}
+.wl-gauge-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
+.wl-pct-val{font-family:var(--orb);font-size:15px;font-weight:700;line-height:1;transition:color 0.5s}
+.wl-pct-lbl{font-family:var(--mono);font-size:6px;letter-spacing:0.1em;color:rgba(255,100,120,0.4);margin-top:2px;text-transform:uppercase}
+
 .pf-stats{display:flex;gap:8px;flex-wrap:wrap}
 .pf-stat{padding:10px 14px;border:1px solid var(--red-border);background:rgba(255,34,68,0.04);min-width:90px}
 .pf-stat-lbl{font-family:var(--orb);font-size:7px;letter-spacing:0.14em;color:rgba(255,80,100,0.45);margin-bottom:5px;text-transform:uppercase}
@@ -133,30 +145,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .chart-wrap{position:relative;height:190px;margin-top:12px}
 #mainChart{width:100%;height:100%}
 .last-updated{font-family:var(--mono);font-size:8px;color:rgba(255,80,100,0.25);letter-spacing:0.05em;text-align:right;padding:4px 0 0}
-
-/* ── WIN/LOSS GAUGE ── */
-.wl-gauge-wrap{
-  position:absolute;
-  bottom:16px;right:20px;
-  display:flex;flex-direction:column;align-items:center;gap:4px;
-  z-index:2;
-}
-.wl-gauge-svg{width:88px;height:88px;filter:drop-shadow(0 0 10px rgba(57,255,110,0.15))}
-.wl-gauge-center{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-44%);
-  text-align:center;pointer-events:none;
-}
-.wl-pct-val{
-  font-family:var(--orb);font-size:17px;font-weight:700;line-height:1;
-  transition:color 0.5s;
-}
-.wl-pct-lbl{font-family:var(--mono);font-size:7px;letter-spacing:0.1em;color:rgba(255,100,120,0.45);margin-top:1px;text-transform:uppercase}
-.wl-legend{display:flex;gap:10px}
-.wl-leg-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:8px;letter-spacing:0.05em}
-.wl-leg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.wl-leg-dot.w{background:var(--green);box-shadow:0 0 5px var(--green-glow)}
-.wl-leg-dot.l{background:var(--retro-orange);box-shadow:0 0 5px rgba(192,78,1,0.5)}
-.wl-leg-val{font-weight:600}
 
 /* ── MARKET OVERVIEW ── */
 .mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}
@@ -215,18 +203,101 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .tx-status{font-family:var(--mono);font-size:7px;margin-top:1px;letter-spacing:0.04em}
 .tx-status.filled{color:rgba(57,255,110,0.5)}.tx-status.partial{color:rgba(255,204,0,0.5)}.tx-status.pending{color:rgba(255,130,150,0.3)}
 
+/* ── REPORT LIST ── */
+.report-list{display:flex;flex-direction:column;gap:4px;max-height:380px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(255,34,68,0.2) transparent}
+.report-row{padding:9px 11px;border:1px solid rgba(255,34,68,0.08);border-left:2px solid rgba(255,34,68,0.3);
+  background:rgba(12,4,6,0.7);cursor:pointer;transition:all 0.15s;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.report-row:hover{background:rgba(20,6,10,0.95);border-left-color:var(--red);border-color:rgba(255,34,68,0.25)}
+.report-row:hover .report-arrow{opacity:1;transform:translateX(2px)}
+.report-name{font-family:var(--mono);font-size:10px;color:rgba(255,200,220,0.85);letter-spacing:0.04em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-meta{font-family:var(--mono);font-size:8px;color:rgba(255,80,100,0.3);white-space:nowrap;flex-shrink:0}
+.report-arrow{font-family:var(--mono);font-size:10px;color:var(--red);opacity:0.4;transition:all 0.2s;flex-shrink:0}
+.report-empty{padding:24px;text-align:center;font-family:var(--mono);font-size:10px;color:rgba(255,100,120,0.3);letter-spacing:0.08em}
+
+/* ── REPORT MODAL ── */
+.report-modal-overlay{position:fixed;inset:0;z-index:500;background:rgba(2,0,2,0.85);
+  backdrop-filter:blur(12px);opacity:0;pointer-events:none;transition:opacity 0.25s ease}
+.report-modal-overlay.show{opacity:1;pointer-events:auto}
+.report-modal{position:absolute;top:32px;left:50%;transform:translateX(-50%);
+  width:min(780px,calc(100vw - 32px));max-height:calc(100vh - 64px);
+  display:flex;flex-direction:column;
+  border:1px solid var(--red-border);background:rgba(8,2,4,0.98);backdrop-filter:blur(24px);
+  box-shadow:0 24px 60px rgba(0,0,0,0.7),0 0 40px rgba(255,34,68,0.06)}
+.report-modal::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--red),transparent);opacity:0.5}
+.report-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px 12px;border-bottom:1px solid rgba(255,34,68,0.1);flex-shrink:0}
+.report-modal-title{font-family:var(--mono);font-size:11px;color:rgba(255,180,200,0.8);
+  letter-spacing:0.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-modal-kicker{font-family:var(--orb);font-size:7px;letter-spacing:0.16em;color:rgba(255,34,68,0.5);
+  text-transform:uppercase;margin-bottom:3px}
+.report-modal-close{width:28px;height:28px;border:1px solid var(--red-border);background:var(--red-dim);
+  color:rgba(255,100,120,0.7);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;flex-shrink:0}
+.report-modal-close:hover{background:rgba(255,34,68,0.2);color:#fff;border-color:var(--red-bright)}
+.report-modal-body{flex:1;overflow-y:auto;padding:20px 22px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,34,68,0.2) transparent}
+/* Markdown-style content rendering */
+.report-content{font-family:var(--mono);font-size:11px;line-height:1.75;color:rgba(255,200,220,0.75)}
+.report-content h1,.report-content h2,.report-content h3{
+  font-family:var(--orb);color:var(--red);letter-spacing:0.1em;text-transform:uppercase;margin:16px 0 8px;line-height:1.3}
+.report-content h1{font-size:14px}
+.report-content h2{font-size:12px;color:rgba(255,80,100,0.8)}
+.report-content h3{font-size:10px;color:rgba(255,80,100,0.6)}
+.report-content p{margin-bottom:10px}
+.report-content strong{color:rgba(255,220,230,0.95);font-weight:600}
+.report-content em{color:rgba(255,200,100,0.8);font-style:normal}
+.report-content code{font-family:var(--mono);background:rgba(255,34,68,0.08);
+  border:1px solid rgba(255,34,68,0.15);padding:1px 5px;font-size:10px;color:var(--green)}
+.report-content pre{background:rgba(0,0,0,0.4);border:1px solid rgba(255,34,68,0.12);
+  padding:12px;overflow-x:auto;margin:10px 0}
+.report-content pre code{background:none;border:none;padding:0}
+.report-content hr{border:none;border-top:1px solid rgba(255,34,68,0.12);margin:14px 0}
+.report-content ul,.report-content ol{padding-left:18px;margin-bottom:10px}
+.report-content li{margin-bottom:4px}
+.report-content blockquote{border-left:2px solid var(--red);padding-left:12px;
+  color:rgba(255,180,200,0.5);margin:10px 0}
+.report-content table{width:100%;border-collapse:collapse;margin:10px 0;font-size:10px}
+.report-content th{font-family:var(--orb);font-size:8px;letter-spacing:0.1em;
+  color:rgba(255,80,100,0.6);border-bottom:1px solid rgba(255,34,68,0.2);padding:6px 8px;text-align:left}
+.report-content td{padding:5px 8px;border-bottom:1px solid rgba(255,34,68,0.07);color:rgba(255,200,220,0.7)}
+.report-content tr:hover td{background:rgba(255,34,68,0.04)}
+/* Loading state inside modal */
+.report-loading{padding:40px;text-align:center;font-family:var(--mono);font-size:10px;
+  color:rgba(255,80,100,0.4);letter-spacing:0.1em;animation:reportPulse 1.5s ease infinite}
+@keyframes reportPulse{0%,100%{opacity:0.4}50%{opacity:0.8}}
+
 .empty-state{padding:28px;text-align:center;font-family:var(--mono);font-size:10px;color:rgba(255,100,120,0.3);letter-spacing:0.08em}
 
 @media(max-width:1100px){.layout{grid-template-columns:1fr}}
 @media(max-width:700px){
   .pos-grid{grid-template-columns:1fr 1fr}.mkt-grid{grid-template-columns:repeat(2,1fr)}.pf-value{font-size:32px}
-  .wl-gauge-wrap{position:relative;bottom:auto;left:auto;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
+  .pf-value-block{gap:12px}
+  .wl-gauge-svg{width:64px;height:64px}
 }
 </style>
 </head>
 <body>
 <div class="atm-grid"></div><div class="atm-radial"></div><div class="atm-scanline"></div>
 <div class="atm-crt"></div><div class="atm-vignette"></div>
+
+<!-- REPORT MODAL -->
+<div class="report-modal-overlay" id="reportModalOverlay" onclick="if(event.target===this)closeReport()">
+  <div class="report-modal">
+    <div class="report-modal-head">
+      <div style="min-width:0">
+        <div class="report-modal-kicker">◈ TRANSACTION REPORT</div>
+        <div class="report-modal-title" id="reportModalTitle">—</div>
+      </div>
+      <button class="report-modal-close" onclick="closeReport()">✕</button>
+    </div>
+    <div class="report-modal-body" id="reportModalBody">
+      <div class="report-loading">LOADING REPORT...</div>
+    </div>
+  </div>
+</div>
 
 <div class="topbar">
   <div class="tb-left">
@@ -262,14 +333,42 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         <div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
 
         <div class="pf-top">
-          <div>
-            <div class="pf-eyebrow">TOTAL PORTFOLIO VALUE</div>
-            <div class="pf-value" id="pfValue"><span class="skel" style="width:220px;height:44px"></span></div>
-            <div class="pf-delta">
-              <div class="pf-chg" id="pfPnl" style="opacity:0.3">— P&L</div>
-              <div class="pf-period-lbl">OPEN P&L</div>
+          <!-- LEFT: value + gauge side by side -->
+          <div class="pf-value-block">
+            <div class="pf-value-text">
+              <div class="pf-eyebrow">TOTAL PORTFOLIO VALUE</div>
+              <div class="pf-value" id="pfValue"><span class="skel" style="width:220px;height:44px"></span></div>
+              <div class="pf-delta">
+                <div class="pf-chg" id="pfPnl" style="opacity:0.3">— P&L</div>
+                <div class="pf-period-lbl">OPEN P&L</div>
+              </div>
+            </div>
+
+            <!-- WIN/LOSS GAUGE — sits right of the value number -->
+            <div class="wl-gauge-block">
+              <div class="wl-gauge-rel">
+                <svg class="wl-gauge-svg" viewBox="0 0 80 80" id="wlGaugeSvg">
+                  <g id="wlTicks" opacity="0.2"></g>
+                  <circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255,34,68,0.1)" stroke-width="6"/>
+                  <circle cx="40" cy="40" r="30" fill="none" stroke="#C04E01" stroke-width="6"
+                    stroke-dasharray="188.5 188.5" stroke-dashoffset="0" stroke-linecap="round"
+                    transform="rotate(-90 40 40)" id="wlLossArc" opacity="0.45"/>
+                  <circle cx="40" cy="40" r="30" fill="none" stroke="#39ff6e" stroke-width="6"
+                    stroke-dasharray="0 188.5" stroke-dashoffset="0" stroke-linecap="round"
+                    transform="rotate(-90 40 40)" id="wlWinArc"
+                    style="transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"/>
+                  <circle cx="40" cy="40" r="22" fill="rgba(255,34,68,0.02)" stroke="rgba(255,34,68,0.07)" stroke-width="1"/>
+                  <circle cx="40" cy="40" r="2.5" fill="rgba(255,34,68,0.4)" id="wlCenterDot"/>
+                </svg>
+                <div class="wl-gauge-center">
+                  <div class="wl-pct-val" id="wlPctVal" style="color:var(--green)">—</div>
+                  <div class="wl-pct-lbl">W/L</div>
+                </div>
+              </div>
             </div>
           </div>
+
+          <!-- RIGHT: stat pills -->
           <div class="pf-stats" id="pfStats">
             <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu"><span class="skel" style="width:40px;height:20px"></span></div></div>
             <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val"><span class="skel" style="width:60px;height:20px"></span></div></div>
@@ -280,60 +379,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 
         <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
         <div class="last-updated" id="lastUpdated"></div>
-
-        <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
-        <div class="wl-gauge-wrap" id="wlGaugeWrap">
-          <div style="position:relative;width:88px;height:88px">
-            <svg class="wl-gauge-svg" viewBox="0 0 88 88" id="wlGaugeSvg">
-              <!-- Tick marks around the ring -->
-              <g id="wlTicks" opacity="0.25"></g>
-              <!-- Background track -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="rgba(255,34,68,0.12)" stroke-width="7"/>
-              <!-- Loss arc (retro orange) — fills from top clockwise for loss % -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="#C04E01" stroke-width="7"
-                stroke-dasharray="213.6 213.6"
-                stroke-dashoffset="0"
-                stroke-linecap="round"
-                transform="rotate(-90 44 44)"
-                id="wlLossArc" opacity="0.5"/>
-              <!-- Win arc (green) — fills from top clockwise for win % -->
-              <circle cx="44" cy="44" r="34" fill="none"
-                stroke="#39ff6e" stroke-width="7"
-                stroke-dasharray="0 213.6"
-                stroke-dashoffset="0"
-                stroke-linecap="round"
-                transform="rotate(-90 44 44)"
-                id="wlWinArc"
-                style="filter:drop-shadow(0 0 4px rgba(57,255,110,0.6));transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"/>
-              <!-- Inner glow ring -->
-              <circle cx="44" cy="44" r="27" fill="rgba(255,34,68,0.03)"
-                stroke="rgba(255,34,68,0.08)" stroke-width="1"/>
-              <!-- Center dot -->
-              <circle cx="44" cy="44" r="3" fill="rgba(255,34,68,0.4)" id="wlCenterDot"/>
-            </svg>
-            <!-- Center text overlay -->
-            <div class="wl-gauge-center">
-              <div class="wl-pct-val" id="wlPctVal" style="color:var(--green)">—</div>
-              <div class="wl-pct-lbl">WIN RATE</div>
-            </div>
-          </div>
-          <!-- Legend below gauge -->
-        <div class="wl-legend">
-            <div class="wl-leg-item">
-              <div class="wl-leg-dot w"></div>
-              <span style="color:rgba(255,150,170,0.4)">W</span>
-              <span class="wl-leg-val" id="wlWinCount" style="color:var(--green)">—</span>
-            </div>
-            <div class="wl-leg-item">
-              <div class="wl-leg-dot l"></div>
-              <span style="color:rgba(255,150,170,0.4)">L</span>
-              <span class="wl-leg-val" id="wlLossCount" style="color:var(--retro-orange)">—</span>
-            </div>
-          </div>
-        </div> 
-
       </div>
 
       <div class="panel">
@@ -354,6 +399,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 
     </div>
     <div class="col-side">
+
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">◈ ORDERS // LAST 24H</div>
@@ -361,17 +407,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         </div>
         <div class="tx-scroll" id="txScroll"></div>
       </div>
-    </div>
-    <div class="col-side">
+
+      <!-- REPORT VIEWER PANEL -->
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">◈ TRANSACTIONS // REPORTS</div>
-          <div class="panel-badge" id="reports">— REPORTS</div>
+          <div class="panel-badge" id="reportsBadge">— REPORTS</div>
         </div>
-        <div class="tx-scroll" id="txScroll"></div>
+        <div class="report-list" id="reportList">
+          <div class="report-empty">LOADING REPORTS...</div>
+        </div>
       </div>
-    </div>
 
+    </div>
   </div>
 </div>
 
@@ -394,62 +442,38 @@ document.getElementById('mktGrid').innerHTML=SKEL_MKT;
 document.getElementById('posGrid').innerHTML=SKEL_POS;
 document.getElementById('txScroll').innerHTML=SKEL_TX;
 
-// Build tick marks around the gauge ring
-(function buildTicks(){
+// ── GAUGE TICKS
+(function(){
   const g=document.getElementById('wlTicks');
-  const cx=44,cy=44,r=34,tickCount=36;
-  for(let i=0;i<tickCount;i++){
-    const angle=(i/tickCount)*Math.PI*2-Math.PI/2;
-    const inner=r-5,outer=r+2;
-    const x1=cx+Math.cos(angle)*inner,y1=cy+Math.sin(angle)*inner;
-    const x2=cx+Math.cos(angle)*outer,y2=cy+Math.sin(angle)*outer;
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',x1.toFixed(1));line.setAttribute('y1',y1.toFixed(1));
-    line.setAttribute('x2',x2.toFixed(1));line.setAttribute('y2',y2.toFixed(1));
-    line.setAttribute('stroke','rgba(255,34,68,0.5)');
-    line.setAttribute('stroke-width',i%4===0?'1.5':'0.8');
-    g.appendChild(line);
+  const cx=40,cy=40,r=30,n=32;
+  for(let i=0;i<n;i++){
+    const a=(i/n)*Math.PI*2-Math.PI/2;
+    const inner=r-4,outer=r+2;
+    const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1',(cx+Math.cos(a)*inner).toFixed(1));l.setAttribute('y1',(cy+Math.sin(a)*inner).toFixed(1));
+    l.setAttribute('x2',(cx+Math.cos(a)*outer).toFixed(1));l.setAttribute('y2',(cy+Math.sin(a)*outer).toFixed(1));
+    l.setAttribute('stroke','rgba(255,34,68,0.6)');l.setAttribute('stroke-width',i%4===0?'1.5':'0.7');
+    g.appendChild(l);
   }
 })();
 
-// ── WIN/LOSS GAUGE UPDATE
+// ── WIN/LOSS GAUGE
 function updateWinLossGauge(winners,losers){
-  const total=winners+losers;
-  const winPct=total>0?Math.round((winners/total)*100):0;
-  const lossPct=100-winPct;
-  const circumference=2*Math.PI*34; // ≈213.63
-
-  const winArc=document.getElementById('wlWinArc');
-  const lossArc=document.getElementById('wlLossArc');
-  const pctVal=document.getElementById('wlPctVal');
-  const centerDot=document.getElementById('wlCenterDot');
-
-  // Win arc: draws clockwise from top
-  const winLen=(winPct/100)*circumference;
-  winArc.style.strokeDasharray=`${winLen.toFixed(2)} ${circumference.toFixed(2)}`;
-
-  // Loss arc: fills the remainder, offset to start right after win arc
-  const lossLen=(lossPct/100)*circumference;
-  lossArc.setAttribute('stroke-dasharray',`${lossLen.toFixed(2)} ${circumference.toFixed(2)}`);
-  // Offset loss arc to start where win arc ends (rotate by win degrees)
-  const winDeg=(winPct/100)*360;
-  lossArc.setAttribute('transform',`rotate(${winDeg-90} 44 44)`);
-
-  // Center label
-  const isGood=winPct>=50;
+  const total=winners+losers,winPct=total>0?Math.round((winners/total)*100):0;
+  const C=2*Math.PI*30; // circumference ≈188.5
+  const winLen=(winPct/100)*C,lossLen=((100-winPct)/100)*C;
+  const winArc=document.getElementById('wlWinArc'),lossArc=document.getElementById('wlLossArc');
+  const pctVal=document.getElementById('wlPctVal'),dot=document.getElementById('wlCenterDot');
+  winArc.style.strokeDasharray=`${winLen.toFixed(2)} ${C.toFixed(2)}`;
+  lossArc.setAttribute('stroke-dasharray',`${lossLen.toFixed(2)} ${C.toFixed(2)}`);
+  lossArc.setAttribute('transform',`rotate(${(winPct/100)*360-90} 40 40)`);
+  const good=winPct>=50;
   pctVal.textContent=winPct+'%';
-  pctVal.style.color=isGood?'var(--green)':'var(--retro-orange)';
-  pctVal.style.textShadow=isGood?'0 0 8px var(--green-glow)':'0 0 8px rgba(192,78,1,0.5)';
-
-  // Center dot pulses green or orange
-  centerDot.setAttribute('fill',isGood?'rgba(57,255,110,0.6)':'rgba(192,78,1,0.6)');
-
-  // Win arc glow color
-  winArc.setAttribute('stroke',isGood?'#39ff6e':'#C04E01');
-  winArc.style.filter=isGood?'drop-shadow(0 0 5px rgba(57,255,110,0.6))':'drop-shadow(0 0 5px rgba(192,78,1,0.5))';
-
-  document.getElementById('wlWinCount').textContent=winners;
-  document.getElementById('wlLossCount').textContent=losers;
+  pctVal.style.color=good?'var(--green)':'var(--retro-orange)';
+  pctVal.style.textShadow=good?'0 0 8px var(--green-glow)':'0 0 8px rgba(192,78,1,0.5)';
+  dot.setAttribute('fill',good?'rgba(57,255,110,0.6)':'rgba(192,78,1,0.6)');
+  winArc.setAttribute('stroke',good?'#39ff6e':'#C04E01');
+  winArc.style.filter=good?'drop-shadow(0 0 5px rgba(57,255,110,0.5))':'drop-shadow(0 0 5px rgba(192,78,1,0.4))';
 }
 
 function setStatus(state,txt){
@@ -458,8 +482,7 @@ function setStatus(state,txt){
   lbl.style.color=state==='error'?'rgba(255,34,68,0.7)':state==='loading'?'rgba(255,204,0,0.7)':'rgba(57,255,110,0.7)';
 }
 function showError(msg){
-  const b=document.getElementById('errorBanner');
-  b.textContent='⚠ '+msg;b.classList.add('show');
+  const b=document.getElementById('errorBanner');b.textContent='⚠ '+msg;b.classList.add('show');
   setTimeout(()=>b.classList.remove('show'),8000);
 }
 function sparkPath(data,W,H){
@@ -467,6 +490,106 @@ function sparkPath(data,W,H){
   const mn=Math.min(...data),mx=Math.max(...data),rng=mx-mn||1;
   return 'M'+data.map((v,i)=>`${(i/(data.length-1))*W},${H-((v-mn)/rng)*(H*0.82)-H*0.09}`).join(' L');
 }
+
+// ── REPORT VIEWER ──────────────────────────────────────────────────────────
+
+// Very lightweight Markdown → HTML converter for report display
+function mdToHtml(md){
+  let h=md
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    // headings
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    // hr
+    .replace(/^[-*]{3,}$/gm,'<hr>')
+    // bold + italic
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/__(.+?)__/g,'<strong>$1</strong>')
+    .replace(/_(.+?)_/g,'<em>$1</em>')
+    // inline code
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    // blockquote
+    .replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>')
+    // unordered list items
+    .replace(/^[*\-] (.+)$/gm,'<li>$1</li>')
+    // ordered list items
+    .replace(/^\d+\. (.+)$/gm,'<li>$1</li>')
+    // wrap consecutive <li> in <ul>
+    .replace(/(<li>[\s\S]*?<\/li>)(\n<li>[\s\S]*?<\/li>)*/g, m=>'<ul>'+m+'</ul>')
+    // paragraphs — blank line separated blocks that aren't already tags
+    .split(/\n{2,}/)
+    .map(block=>{
+      const trimmed=block.trim();
+      if(!trimmed)return'';
+      if(/^<(h[1-6]|ul|ol|li|hr|blockquote|pre)/.test(trimmed))return trimmed;
+      return '<p>'+trimmed.replace(/\n/g,' ')+'</p>';
+    })
+    .join('\n');
+  return h;
+}
+
+async function loadReports(){
+  try{
+    const res=await fetch('/api/reports');
+    const d=await res.json();
+    const list=document.getElementById('reportList');
+    const badge=document.getElementById('reportsBadge');
+    const reports=d.reports||[];
+    badge.textContent=reports.length+' REPORTS';
+    if(!reports.length){
+      list.innerHTML='<div class="report-empty">NO REPORTS YET</div>';
+      return;
+    }
+    list.innerHTML=reports.map(name=>{
+      // Parse ticker + date from filename e.g. "RTX_2024-03-25_14-31.md"
+      const parts=name.replace(/\.[^.]+$/,'').split('_');
+      const ticker=parts[0]||'—';
+      const datePart=parts[1]||'';
+      const display=datePart?`${ticker} · ${datePart}`:name;
+      return `<div class="report-row" onclick="openReport('${name.replace(/'/g,"\\'")}')">
+        <div class="report-name">${display}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <div class="report-meta">${name.split('.').pop().toUpperCase()}</div>
+          <div class="report-arrow">→</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    document.getElementById('reportList').innerHTML='<div class="report-empty">COULD NOT LOAD REPORTS</div>';
+  }
+}
+
+async function openReport(filename){
+  const overlay=document.getElementById('reportModalOverlay');
+  const title=document.getElementById('reportModalTitle');
+  const body=document.getElementById('reportModalBody');
+  title.textContent=filename;
+  body.innerHTML='<div class="report-loading">LOADING REPORT...</div>';
+  overlay.classList.add('show');
+  document.body.style.overflow='hidden';
+  try{
+    const res=await fetch(`/api/reports/${encodeURIComponent(filename)}`);
+    if(!res.ok)throw new Error('Not found');
+    const d=await res.json();
+    const ext=filename.split('.').pop().toLowerCase();
+    if(ext==='html'){
+      body.innerHTML=`<div class="report-content">${d.content}</div>`;
+    }else{
+      // Treat as markdown / plain text
+      body.innerHTML=`<div class="report-content">${mdToHtml(d.content)}</div>`;
+    }
+  }catch(e){
+    body.innerHTML=`<div class="report-content"><p style="color:var(--retro-orange)">⚠ Failed to load report: ${e.message}</p></div>`;
+  }
+}
+
+function closeReport(){
+  document.getElementById('reportModalOverlay').classList.remove('show');
+  document.body.style.overflow='';
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeReport();});
 
 // ── TICKER
 function buildTicker(quotes){
@@ -480,7 +603,7 @@ function buildTicker(quotes){
   }).join('');
 }
 
-// ── MARKET OVERVIEW
+// ── MARKET
 function buildMarket(quotes){
   const grid=document.getElementById('mktGrid');
   if(!quotes){grid.innerHTML='<div class="empty-state">NO MARKET DATA</div>';return;}
@@ -488,12 +611,9 @@ function buildMarket(quotes){
   if(!items.length){grid.innerHTML='<div class="empty-state">NO QUOTES AVAILABLE</div>';return;}
   grid.innerHTML=items.map(q=>{
     const up=q.changePct>=0,cls=Math.abs(q.changePct)<0.01?'flat':up?'up':'dn';
-    return `<div class="mkt-card">
-      <div class="mkt-sym">${q.symbol}</div>
-      <div class="mkt-name">${q.name||''}</div>
+    return `<div class="mkt-card"><div class="mkt-sym">${q.symbol}</div><div class="mkt-name">${q.name||''}</div>
       <div class="mkt-price">${fmtPrice(q.price)}</div>
-      <div class="mkt-chg ${cls}">${up?'▲ +':'▼ '}${fmt(Math.abs(q.changePct),2)}%</div>
-    </div>`;
+      <div class="mkt-chg ${cls}">${up?'▲ +':'▼ '}${fmt(Math.abs(q.changePct),2)}%</div></div>`;
   }).join('');
 }
 
@@ -504,22 +624,16 @@ function buildPortfolioHeader(positions,totalValue){
   const losers=positions.filter(p=>num(p.pnl_pct)<0).length;
   const pnlUp=totalPnl>=0;
   const displayVal=totalValue!=null?totalValue:positions.reduce((s,p)=>s+num(p.value),0);
-
   document.getElementById('pfValue').innerHTML=`$${fmt(displayVal,2)}`;
   const pfPnl=document.getElementById('pfPnl');
-  pfPnl.className='pf-chg '+(pnlUp?'up':'dn');
-  pfPnl.style.opacity='1';
+  pfPnl.className='pf-chg '+(pnlUp?'up':'dn');pfPnl.style.opacity='1';
   pfPnl.innerHTML=`${pnlUp?'▲ +':'▼ '}$${fmt(Math.abs(totalPnl),2)} OPEN P&L`;
-
   document.getElementById('pfStats').innerHTML=[
     {lbl:'POSITIONS',val:positions.length,cls:'neu'},
     {lbl:'TOTAL P&L',val:(pnlUp?'+':'')+' $'+fmt(Math.abs(totalPnl),2),cls:pnlUp?'up':'dn'},
     {lbl:'WINNERS',val:winners,cls:'up'},
     {lbl:'LOSERS',val:losers,cls:'dn'},
   ].map(s=>`<div class="pf-stat"><div class="pf-stat-lbl">${s.lbl}</div><div class="pf-stat-val ${s.cls}">${s.val}</div></div>`).join('');
-
-  // Update the win/loss gauge
-  // Slight delay so the CSS transition fires after render
   setTimeout(()=>updateWinLossGauge(winners,losers),100);
 }
 
@@ -528,28 +642,23 @@ function buildPositions(positions,quotes){
   const grid=document.getElementById('posGrid');
   if(!positions||!positions.length){
     grid.innerHTML='<div class="empty-state">NO POSITIONS FOUND</div>';
-    document.getElementById('posCount').textContent='0 POSITIONS';
-    return;
+    document.getElementById('posCount').textContent='0 POSITIONS';return;
   }
-  const quoteLookup={};
-  if(quotes)Object.values(quotes).forEach(q=>{if(q&&q.symbol)quoteLookup[q.symbol]=q;});
-
+  const ql={};if(quotes)Object.values(quotes).forEach(q=>{if(q&&q.symbol)ql[q.symbol]=q;});
   grid.innerHTML=positions.map(p=>{
     const ticker=typeof p.symbol==='string'?p.symbol:(p.symbol?.symbol||p.symbol?.raw_symbol||'???');
     const price=num(p.price),units=num(p.units),avgCost=num(p.avg_cost);
     const pnlPct=num(p.pnl_pct),mktVal=num(p.value)||price*units;
     const pnlDollar=mktVal-(avgCost*units),pnlUp=pnlPct>=0;
-    const q=quoteLookup[ticker];
-    const changePct=q?q.changePct:pnlPct,up=changePct>=0;
-    let sparkData;
-    if(q&&q.history&&q.history.length>=2){sparkData=q.history.map(h=>h.close);}
-    else{sparkData=Array.from({length:8},(_,i)=>avgCost+((price-avgCost)*i/7)+(Math.random()-0.5)*price*0.005);}
-    const sp=sparkPath(sparkData,54,22),stroke=up?'#39ff6e':'#C04E01';
-
+    const q=ql[ticker],changePct=q?q.changePct:pnlPct,up=changePct>=0;
+    let sd;
+    if(q&&q.history&&q.history.length>=2)sd=q.history.map(h=>h.close);
+    else sd=Array.from({length:8},(_,i)=>avgCost+((price-avgCost)*i/7)+(Math.random()-0.5)*price*0.005);
+    const sp=sparkPath(sd,54,22),stroke=up?'#39ff6e':'#C04E01';
     return `<div class="pos-card ${up?'is-up':'is-dn'}">
       <div class="pos-ghost">${ticker}</div>
       <div class="pos-row1">
-        <div><div class="pos-ticker">${ticker}</div><div class="pos-name" title="${ticker}">${ticker}</div></div>
+        <div><div class="pos-ticker">${ticker}</div><div class="pos-name">${ticker}</div></div>
         ${sp?`<svg class="pos-spark-svg" viewBox="0 0 54 22" preserveAspectRatio="none">
           <path d="${sp}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
         </svg>`:'<div style="width:54px"></div>'}
@@ -572,14 +681,11 @@ function buildPositions(positions,quotes){
 function buildOrders(ordersData){
   const scroll=document.getElementById('txScroll');
   const orders=ordersData?.orders||(Array.isArray(ordersData)?ordersData:[]);
-  if(!orders.length){
-    scroll.innerHTML='<div class="empty-state">NO ORDERS IN LAST 24H</div>';
-    document.getElementById('txCount').textContent='0 ORDERS';return;
-  }
+  if(!orders.length){scroll.innerHTML='<div class="empty-state">NO ORDERS IN LAST 24H</div>';document.getElementById('txCount').textContent='0 ORDERS';return;}
   scroll.innerHTML=orders.map(o=>{
     const action=(o.action||'ORDER').toLowerCase(),isBuy=action==='buy',isSell=action==='sell';
     const typeClass=isBuy?'buy':isSell?'sell':'other';
-    const ticker=typeof o.symbol==='string'?o.symbol:(o.universal_symbol?.symbol||o.quote_universal_symbol?.symbol||'???');
+    const ticker=typeof o.symbol==='string'?o.symbol:(o.universal_symbol?.symbol||'???');
     const orderType=o.type||o.order_type||'Order';
     const status=o.status||'';let statusClass='pending',statusLabel=status||'PENDING';
     const sl=status.toLowerCase();
@@ -594,8 +700,7 @@ function buildOrders(ordersData){
       <div class="tx-icon ${typeClass}">${(o.action||'ORD').toUpperCase().slice(0,4)}</div>
       <div class="tx-body">
         <div class="tx-line1"><span class="tx-ticker">${ticker}</span><span class="tx-amt ${typeClass}">${total>0?pfx+fmt(total,2):'—'}</span></div>
-        <div class="tx-detail">${detail}</div>
-        <div class="tx-time">${timeFmt}</div>
+        <div class="tx-detail">${detail}</div><div class="tx-time">${timeFmt}</div>
         <div class="tx-status ${statusClass}">${statusLabel}</div>
       </div>
     </div>`;
@@ -605,44 +710,37 @@ function buildOrders(ordersData){
 
 // ── CHART
 function genChartData(positions){
-  const pts=40;
   const totalCost=positions.reduce((s,p)=>s+num(p.avg_cost)*num(p.units),0);
   const totalNow=positions.reduce((s,p)=>s+num(p.value||0)||num(p.price)*num(p.units),0);
-  const data=[];let v=totalCost||1;
-  const step=(totalNow-totalCost)/(pts*0.6);
-  for(let i=0;i<pts;i++){v+=step+(Math.random()-0.48)*Math.abs(step||1)*2;data.push(v);}
-  data[data.length-1]=totalNow||v;return data;
+  const data=[];let v=totalCost||1;const step=(totalNow-totalCost)/(40*0.6);
+  for(let i=0;i<40;i++){v+=step+(Math.random()-0.48)*Math.abs(step||1)*2;data.push(v);}
+  data[39]=totalNow||v;return data;
 }
 function drawChart(positions){
   const canvas=document.getElementById('mainChart');
   if(!canvas||!positions||!positions.length)return;
-  const ctx=canvas.getContext('2d');
-  const W=canvas.parentElement.offsetWidth,H=190;
+  const ctx=canvas.getContext('2d'),W=canvas.parentElement.offsetWidth,H=190;
   canvas.width=W;canvas.height=H;
-  const data=genChartData(positions);
-  const mn=Math.min(...data),mx=Math.max(...data),rng=mx-mn||1;
-  const isUp=data[data.length-1]>=data[0];
-  const lc=isUp?'#39ff6e':'#C04E01',gc=isUp?'rgba(57,255,110,.7)':'rgba(192,78,1,.7)',ft=isUp?'rgba(57,255,110,.10)':'rgba(192,78,1,.10)';
-  const px=i=>(i/(data.length-1))*W,py=v=>H-0.08*H-((v-mn)/rng)*(H*0.82);
+  const data=genChartData(positions),mn=Math.min(...data),mx=Math.max(...data),rng=mx-mn||1;
+  const isUp=data[39]>=data[0],lc=isUp?'#39ff6e':'#C04E01',gc=isUp?'rgba(57,255,110,.7)':'rgba(192,78,1,.7)',ft=isUp?'rgba(57,255,110,.10)':'rgba(192,78,1,.10)';
+  const px=i=>(i/39)*W,py=v=>H-0.08*H-((v-mn)/rng)*(H*0.82);
   ctx.clearRect(0,0,W,H);
   ctx.strokeStyle='rgba(255,34,68,.055)';ctx.lineWidth=1;
-  for(let g=1;g<5;g++){
-    const y=py(mn+rng*g/4);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
-    ctx.fillStyle='rgba(255,80,100,.3)';ctx.font="500 8px 'IBM Plex Mono'";ctx.textAlign='left';ctx.fillText(fmtK(mn+rng*g/4),4,y-3);
-  }
+  for(let g=1;g<5;g++){const y=py(mn+rng*g/4);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+    ctx.fillStyle='rgba(255,80,100,.3)';ctx.font="500 8px 'IBM Plex Mono'";ctx.textAlign='left';ctx.fillText(fmtK(mn+rng*g/4),4,y-3);}
   const grad=ctx.createLinearGradient(0,0,0,H);grad.addColorStop(0,ft);grad.addColorStop(0.7,'rgba(0,0,0,0)');
   ctx.beginPath();ctx.moveTo(px(0),py(data[0]));data.forEach((v,i)=>ctx.lineTo(px(i),py(v)));
-  ctx.lineTo(px(data.length-1),H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+  ctx.lineTo(px(39),H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
   ctx.save();ctx.shadowColor=gc;ctx.shadowBlur=10;ctx.strokeStyle=lc;ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.lineCap='round';
   ctx.beginPath();ctx.moveTo(px(0),py(data[0]));data.forEach((v,i)=>ctx.lineTo(px(i),py(v)));ctx.stroke();ctx.restore();
-  const curY=py(data[data.length-1]);
+  const curY=py(data[39]);
   ctx.strokeStyle='rgba(192,78,1,.22)';ctx.lineWidth=1;ctx.setLineDash([3,5]);ctx.beginPath();ctx.moveTo(0,curY);ctx.lineTo(W,curY);ctx.stroke();ctx.setLineDash([]);
-  ctx.fillStyle='rgba(192,78,1,.65)';ctx.font="600 9px 'IBM Plex Mono'";ctx.textAlign='right';ctx.fillText('$'+fmt(data[data.length-1],0),W-4,curY-4);
-  ctx.save();ctx.shadowColor=lc;ctx.shadowBlur=14;ctx.fillStyle=lc;ctx.beginPath();ctx.arc(px(data.length-1),curY,4,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.fillStyle='rgba(192,78,1,.65)';ctx.font="600 9px 'IBM Plex Mono'";ctx.textAlign='right';ctx.fillText('$'+fmt(data[39],0),W-4,curY-4);
+  ctx.save();ctx.shadowColor=lc;ctx.shadowBlur=14;ctx.fillStyle=lc;ctx.beginPath();ctx.arc(px(39),curY,4,0,Math.PI*2);ctx.fill();ctx.restore();
 }
 window.addEventListener('resize',()=>{if(window._lastPositions)drawChart(window._lastPositions);});
 
-// ── LOAD
+// ── MAIN LOAD
 async function loadAll(manual=false){
   const refreshBtn=document.getElementById('refreshBtn');
   if(refreshBtn)refreshBtn.disabled=true;
@@ -651,32 +749,22 @@ async function loadAll(manual=false){
     const res=await fetch('/api/redline');
     if(!res.ok)throw new Error(`/api/redline returned ${res.status}`);
     const d=await res.json();
-
     let positions=[];
     const rp=d.currentPortfolio;
     if(Array.isArray(rp))positions=rp;
     else if(typeof rp==='string'){try{const p=JSON.parse(rp);positions=Array.isArray(p)?p:[];}catch{positions=[];}}
     else if(rp&&typeof rp==='object')positions=[rp];
-
     let ordersData={orders:[]};
     const ro=d.accountOrders24h;
     if(ro){
       if(typeof ro==='string'){try{const p=JSON.parse(ro);ordersData=Array.isArray(p.orders)?p:{orders:Array.isArray(p)?p:[]};}catch{ordersData={orders:[]};}}
       else ordersData=Array.isArray(ro.orders)?ro:{orders:Array.isArray(ro)?ro:[]};
     }
-
     const quotes=d.yfinance?.quotes??null,bp=d.buyingPower??0,totalValue=d.accountTotalValue??null;
-    const bpEl=document.getElementById('buyingPwr');
-    if(bpEl)bpEl.textContent=bp!=null?'$'+fmt(bp,2):'—';
-
-    buildTicker(quotes);
-    buildMarket(quotes);
-    buildPortfolioHeader(positions,totalValue);
-    buildPositions(positions,quotes);
-    buildOrders(ordersData);
-    drawChart(positions);
+    const bpEl=document.getElementById('buyingPwr');if(bpEl)bpEl.textContent=bp!=null?'$'+fmt(bp,2):'—';
+    buildTicker(quotes);buildMarket(quotes);buildPortfolioHeader(positions,totalValue);
+    buildPositions(positions,quotes);buildOrders(ordersData);drawChart(positions);
     window._lastPositions=positions;
-
     const lu=document.getElementById('lastUpdated');
     if(lu)lu.textContent='LAST UPDATED: '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     setStatus('live','MARKET OPEN · LIVE DATA');
@@ -689,7 +777,9 @@ async function loadAll(manual=false){
 }
 
 loadAll();
+loadReports();
 setInterval(()=>loadAll(),5*60*1000);
+setInterval(()=>loadReports(),2*60*1000); // refresh report list every 2 min
 </script>
 </body>
 </html>
