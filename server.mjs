@@ -61,6 +61,8 @@ const scout = new ScoutLLM(config.redline.scout, getLiveQuote);
 const bull = new PhiLLM(config.redline.phi || {})
 const bear = new ThetaLLM(config.redline.theta)
 const omega = new GregorLLM(config.redline.omega)
+const scribe = new GeminiProvider(config.redline.scout)
+
 const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
@@ -548,8 +550,7 @@ async function CheckDebateCycle(context) {
     
     console.log("[REDLINE] Order Executed ✅:", orderRes);
     telegramAlerter.sendTradeAlert(trade)
-    const scribe = new GeminiProvider(config.scout)
-    const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript))
+    const scribeReport = await scribe.complete(ScribePrompt, JSON.stringify(trade.transcript), {}, true)
     console.log(`SCribe Report ${scribeReport}`)
     await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text)
 }
