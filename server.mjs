@@ -512,7 +512,7 @@ async function runPortfolio() {
 }
 
 async function CheckDebateCycle(context) {
-    const [buyingPower, openAccountOrders ]= await Promise.all([snapTrade.FetchAccountBuyingPower(), snapTrade.FetchOpenAccountOrders()])
+    const [buyingPower, openAccountOrders ]= await Promise.all([snapTrade.FetchAccountBuyingPower(), snapTrade.FetchOpenAccountOrders()]);
     const result = await scout.assessInfo(context, currentData, snapTrade.GetCurrentPortfolio(), snapTrade.GetCurrentAcccountHoldings(), lastDecision, buyingPower, openAccountOrders );
     console.log(`[SCOUT] ${result}`)
     if (!result) return;
