@@ -220,7 +220,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 @media(max-width:1100px){.layout{grid-template-columns:1fr}}
 @media(max-width:700px){
   .pos-grid{grid-template-columns:1fr 1fr}.mkt-grid{grid-template-columns:repeat(2,1fr)}.pf-value{font-size:32px}
-  .wl-gauge-wrap{position:relative;bottom:auto;right:auto;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
+  .wl-gauge-wrap{position:relative;bottom:auto;right:auto;left:19%;flex-direction:row;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,34,68,0.08)}
 }
 </style>
 </head>
@@ -270,18 +270,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
               <div class="pf-period-lbl">OPEN P&L</div>
             </div>
           </div>
-          <div class="pf-stats" id="pfStats">
-            <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu"><span class="skel" style="width:40px;height:20px"></span></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val"><span class="skel" style="width:60px;height:20px"></span></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">WINNERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
-            <div class="pf-stat"><div class="pf-stat-lbl">LOSERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
-          </div>
-        </div>
-
-        <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
-        <div class="last-updated" id="lastUpdated"></div>
-
-        <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
+            <!-- WIN/LOSS GAUGE — bottom right of portfolio header -->
         <div class="wl-gauge-wrap" id="wlGaugeWrap">
           <div style="position:relative;width:88px;height:88px">
             <svg class="wl-gauge-svg" viewBox="0 0 88 88" id="wlGaugeSvg">
@@ -320,18 +309,21 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
             </div>
           </div>
           <!-- Legend below gauge -->
-          <div class="wl-legend">
-            <div class="wl-leg-item">
-              <div class="wl-leg-dot w"></div>
-              <span style="color:rgba(255,150,170,0.4)">W</span>
-              <span class="wl-leg-val" id="wlWinCount" style="color:var(--green)">—</span>
-            </div>
-            <div class="wl-leg-item">
-              <div class="wl-leg-dot l"></div>
-              <span style="color:rgba(255,150,170,0.4)">L</span>
-              <span class="wl-leg-val" id="wlLossCount" style="color:var(--retro-orange)">—</span>
-            </div>
+          
+            
           </div>
+          <div class="pf-stats" id="pfStats">
+            <div class="pf-stat"><div class="pf-stat-lbl">POSITIONS</div><div class="pf-stat-val neu"><span class="skel" style="width:40px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">TOTAL P&L</div><div class="pf-stat-val"><span class="skel" style="width:60px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">WINNERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
+            <div class="pf-stat"><div class="pf-stat-lbl">LOSERS</div><div class="pf-stat-val"><span class="skel" style="width:40px;height:20px"></span></div></div>
+          </div>
+        </div>
+
+        <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+        <div class="last-updated" id="lastUpdated"></div>
+
+      
         </div>
 
       </div>
