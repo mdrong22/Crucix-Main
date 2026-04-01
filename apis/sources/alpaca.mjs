@@ -4,10 +4,13 @@
  * @param {string} timeframe - '1Min', '5Min', '1Day' etc.
  * @param {number} limit - Number of bars (default 14 for RSI)
  */
-export async function getHistoricalTechnicals(symbol, timeframe = '5Min', limit = 14) {
+export async function getHistoricalTechnicals(symbol, timeframe = '1Min', limit = 14) {
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000)).toISOString();
+
   const apiKey = process.env.ALPACA_API_KEY; // Provided by environment
   const apiSecret = process.env.ALPACA_SECRET; // Provided by environment
-  const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbol}&timeframe=${timeframe}&limit=${limit}&adjustment=raw&feed=sip&sort=desc`;
+  const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbol}&timeframe=${timeframe}&limit=${limit}&adjustment=raw&feed=sip&sort=desc&start=${oneHourAgo}`;
 
   try {
     const response = await fetch(url, {
