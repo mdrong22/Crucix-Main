@@ -586,9 +586,13 @@ async function CheckDebateCycle(context) {
       console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`, orderRes);
       telegramAlerter.sendTradeAlert(trade);
       try {
+          const cleanTranscript = trade.transcript
+            .filter(m => m.role !== 'system') // Strip heavy system prompts
+            .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
+            .join('\n\n');
           const scribeReport = await scribe.complete(
               ScribePrompt,
-              JSON.stringify(trade.transcript),
+              cleanTranscript,
               { action: trade.action, ticker: trade.symbol },
               true
           );
