@@ -25,6 +25,8 @@ import { PhiLLM } from './lib/llm/council/phi.mjs';
 import { ThetaLLM } from './lib/llm/council/theta.mjs';
 import { GregorLLM } from './lib/llm/council/omega.mjs';
 import { Snaptrade } from 'snaptrade-typescript-sdk';
+import { calculateRemainingDayTrades, ComplianceManager } from './lib/llm/council/utils/compliance.mjs';
+import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -536,75 +538,104 @@ async function runPortfolio() {
 }
 
 async function CheckDebateCycle(context) {
-  const [buyingPower, openAccountOrders] = await Promise.all([
+  const [buyingPower, openAccountOrders, orderCompliance, orders24h] = await Promise.all([
       snapTrade.FetchAccountBuyingPower(),
-      snapTrade.FetchOpenAccountOrders()
+      snapTrade.FetchOpenAccountOrders(),
+      snapTrade.FetchOrderCompliance(),
+      snapTrade.FetchAccountOrders24h(true)
   ]);
+  const stringifiedOrders24h = DataCleaner.stringifyOrders(orders24h)
+  const remaining = calculateRemainingDayTrades(orderCompliance)
+  const isRestricted = remaining === 0;
+  console.log(`[REDLINE] 📊 DAY TRADES REMAINING: ${remaining}/3`);
+  if (isRestricted) {
+      console.warn("[REDLINE] 🛡️ PDT PROTECTION ACTIVE: Bot is restricted to Overnight Holds.");
+  }
   const result = await scout.assessInfo(
-      context,
+      ...context,
       currentData,
       snapTrade.GetCurrentPortfolio(),
       snapTrade.GetCurrentAcccountHoldings(),
       lastDecision,
       buyingPower,
-      openAccountOrders
+      openAccountOrders,
+      remaining,
+      stringifiedOrders24h
   );
+
   console.log(`[SCOUT] ${result}`);
   if (!result) return;
+
+  
+  // 2. SCOUT "QUIET" CHECK
   if (result.toUpperCase().includes("QUIET")) {
       console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
       return;
   }
-  const tickerMatch = result.match(/-\s*\*\*Ticker:\*\*\s*\$?(?<ticker>[A-Z]+)/i);
-  const triggerMatch = result.match(/-\s*\*\*Trigger:\*\*\s*(?<trigger>.*)/i);
-  const dataMatch = result.match(/-\s*\*\*The Data:\*\*\s*(?<data>.*)/i);
-  if (tickerMatch && triggerMatch && dataMatch) {
+
+  // 1. GATHER SCOUT'S INTENT IMMEDIATELY (Crucial for state)
+  const tickerMatch = result.match(/(?:Ticker|Symbol):\s*\**\$?([A-Z]+)\**/i);
+
+  // 2. Trigger: Matches everything after "Trigger:" until the end of the line
+  const triggerMatch = result.match(/Trigger:\s*\**(?<trigger>.*)/i);
+  
+  // 3. Data: Matches everything after "The Data:" or "Data:" until the end of the line
+  const dataMatch = result.match(/(?:The\s+)?Data:\s*\**(?<data>.*)/i);
+  
+  if (tickerMatch) {
+      const extractedTicker = tickerMatch[1].trim();
+      const extractedTrigger = triggerMatch?.groups?.trigger?.replace(/\**/g, '').trim() || "Manual Escalation";
+      const extractedData = dataMatch?.groups?.data?.replace(/\**/g, '').trim() || "Context provided in transcript";
+  
       lastDecision = {
-          ticker: tickerMatch.groups.ticker.trim(),
-          trigger: triggerMatch.groups.trigger.trim(),
-          data: dataMatch.groups.data.trim(),
+          ticker: extractedTicker,
+          trigger: extractedTrigger,
+          data: extractedData,
           date: new Date().toLocaleString()
       };
+      
+      console.log(`[REDLINE] Memory Latched → ${extractedTicker} | Trigger: ${extractedTrigger.substring(0, 30)}...`);
   } else {
-      console.warn("[REDLINE] Scout Escalated but Regex failed. Raw:", result);
+    console.log(`[ERROR] REGEX FAILED FOR LAST DECISION | RAW RESULT ${result}`)
   }
+
+  // 3. ESCALATE TO COUNCIL
   console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-  let debateResult = await debate.beginDebate(result, context);
+  let debateResult = await debate.beginDebate(result, context, remaining);
+  
   const trades = Array.isArray(debateResult) ? debateResult : [debateResult];
   const actionableTrades = trades.filter(t => t && t.action && t.action !== "WAIT");
+
+  // 4. COUNCIL "WAIT" HANDLING
   if (actionableTrades.length === 0) {
       console.log("[REDLINE] Council returned no actionable trades (Verdict: WAIT).");
+      // lastDecision IS ALREADY SAVED ABOVE, so we can safely exit here.
       return;
   }
+
+  // 5. EXECUTION LOOP (Actionable trades only)
   for (const trade of actionableTrades) {
       console.log(`[REDLINE] Execution Triggered: ${trade.action} ${trade.symbol}`);
       const orderRes = await snapTrade.PlaceOrder(trade);
+      
       if (!orderRes) {
-          console.error(`[REDLINE] ❌ Order failed for ${trade.symbol}. Aborting sequence.`);
+          console.error(`[REDLINE] ❌ Order failed for ${trade.symbol}.`);
           break;
       }
-      console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`, orderRes);
+      console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`);
       telegramAlerter.sendTradeAlert(trade);
+
+      // Reporting logic (using the light transcript fix from earlier)
       try {
           const cleanTranscript = trade.transcript
-            .filter(m => m.role !== 'system') // Strip heavy system prompts
-            .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
-            .join('\n\n');
-          const scribeReport = await scribe.complete(
-              ScribePrompt,
-              cleanTranscript,
-              { action: trade.action, ticker: trade.symbol },
-              true
-          );
-          if (scribeReport && scribeReport.text) {
-              console.log(`[SCRIBE] Report for ${trade.symbol}: ${scribeReport.text}`);
-              await generateLocalReport(trade.symbol, trade.transcript, scribeReport.text);
-          }
-      } catch (scribeErr) {
-          console.error("[REDLINE] Scribe reporting failed, but trade was executed:", scribeErr.message);
-      }
+              .filter(m => m.role !== 'system')
+              .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
+              .join('\n\n');
+          console.log(`Cleaned Transcript ${cleanTranscript}`)
+          setTimeout(() => {console.log(`[REDLINE] Initializing Scribe...`)}, 2000)
+          await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
+      } catch (e) { console.log('SCRIBE FAILED: ', e.message) }
   }
-  console.log(`${'='.repeat(60)}`);
 }
 // === Startup ===
 async function start() {
