@@ -24,8 +24,7 @@ import { Debate } from './lib/alerts/debate.mjs';
 import { PhiLLM } from './lib/llm/council/phi.mjs';
 import { ThetaLLM } from './lib/llm/council/theta.mjs';
 import { GregorLLM } from './lib/llm/council/omega.mjs';
-import { Snaptrade } from 'snaptrade-typescript-sdk';
-import { calculateRemainingDayTrades, ComplianceManager } from './lib/llm/council/utils/compliance.mjs';
+import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -614,10 +613,14 @@ async function CheckDebateCycle(context) {
   }
 
   // 5. EXECUTION LOOP (Actionable trades only)
-  for (const trade of actionableTrades) {
-      console.log(`[REDLINE] Execution Triggered: ${trade.action} ${trade.symbol}`);
-      const orderRes = await snapTrade.PlaceOrder(trade);
-      
+    for (const trade of actionableTrades) {
+      if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+        console.error(`[CRITICAL] CIRCUIT BREAKER: Blocked ${trade.action} on ${trade.symbol}. Already traded today & 0 day trades left.`);
+        continue; 
+      }
+        console.log(`[REDLINE] Execution Triggered: ${trade.action} ${trade.symbol}`);
+        const orderRes = await snapTrade.PlaceOrder(trade);
+        
       if (!orderRes) {
           console.error(`[REDLINE] ❌ Order failed for ${trade.symbol}.`);
           break;
@@ -633,7 +636,8 @@ async function CheckDebateCycle(context) {
               .join('\n\n');
           console.log(`Cleaned Transcript ${cleanTranscript}`)
           setTimeout(() => {console.log(`[REDLINE] Initializing Scribe...`)}, 2000)
-          await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
+          const res = await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
+          generateLocalReport(trade.symbol, cleanTranscript, res.text )
       } catch (e) { console.log('SCRIBE FAILED: ', e.message) }
   }
 }
