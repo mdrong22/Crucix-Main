@@ -3,6 +3,13 @@
 // Free tier: 250 calls/day. Get a key at https://financialmodelingprep.com/developer/docs
 // Env var required: FMP_API_KEY
 //
+// RATE LIMIT STRATEGY:
+//   250 calls/day limit. Sweep runs every 10 min = 144 sweeps/day.
+//   Without caching: 144 × 2 calls = 288/day → over limit.
+//   With CACHE_TTL_MS (4 hours default): ~6 refreshes/day × 2 calls = 12 calls/day.
+//   Congressional disclosures are filed days/weeks after trades — 4h cache is safe.
+//   Set env var CONGRESS_CACHE_HOURS to override (e.g. CONGRESS_CACHE_HOURS=2).
+//
 // Endpoints used (stable v2 API — flat array responses, no nesting):
 //   Senate: https://financialmodelingprep.com/stable/senate-latest?apikey=KEY
 //   House:  https://financialmodelingprep.com/stable/house-latest?apikey=KEY
@@ -17,8 +24,39 @@
 
 import { safeFetch } from '../utils/fetch.mjs';
 
-const BASE      = 'https://financialmodelingprep.com';
+const BASE          = 'https://financialmodelingprep.com';
 const LOOKBACK_DAYS = 45;
+
+// ─── In-Memory Cache ─────────────────────────────────────────────────────────
+// Keeps FMP API usage well under the 250 calls/day free tier limit.
+
+const CACHE_TTL_MS = (() => {
+  const hours = parseFloat(process.env.CONGRESS_CACHE_HOURS || '4');
+  return (isNaN(hours) || hours <= 0 ? 4 : hours) * 60 * 60 * 1000;
+})();
+
+let _cache = null;   // { result, fetchedAt: Date, callCount: number }
+let _dailyCallCount = 0;
+let _dailyResetAt   = Date.now();
+
+function resetDailyCounterIfNeeded() {
+  const MS_PER_DAY = 86_400_000;
+  if (Date.now() - _dailyResetAt >= MS_PER_DAY) {
+    _dailyCallCount = 0;
+    _dailyResetAt   = Date.now();
+  }
+}
+
+function cacheHit() {
+  if (!_cache) return false;
+  return (Date.now() - _cache.fetchedAt) < CACHE_TTL_MS;
+}
+
+function ageLabel(ms) {
+  if (ms < 60_000)   return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
 
 function endpoints(key) {
   return {
@@ -128,12 +166,14 @@ function unwrap(val) {
 // ─── Fetch with stable → legacy fallback ─────────────────────────────────────
 
 async function fetchChamber(stableUrl, legacyUrl, normalizer, label) {
-  // Try stable endpoint first
+  // Try stable endpoint first (1 API call)
+  _dailyCallCount++;
   let raw = unwrap(await safeFetch(stableUrl, { timeout: 20000 }));
 
-  // If stable returned nothing useful, try legacy
+  // If stable returned nothing useful, try legacy (1 more API call)
   if (!raw || raw.length === 0) {
     console.warn(`[Congress] ${label} stable endpoint empty — trying legacy`);
+    _dailyCallCount++;
     raw = unwrap(await safeFetch(legacyUrl, { timeout: 20000 }));
   }
 
@@ -191,17 +231,8 @@ function aggregateByTicker(trades) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export async function briefing() {
-  const key = process.env.FMP_API_KEY;
-  if (!key) {
-    console.warn('[Congress] FMP_API_KEY not set — skipping congressional data. Get a free key at financialmodelingprep.com');
-    return {
-      status:  'unconfigured',
-      message: 'FMP_API_KEY not set.',
-      topBuys: [], topSells: [], heavyHitters: [],
-      summary: 'Congressional data unavailable — FMP_API_KEY not configured.',
-    };
-  }
+async function _fetchFresh(key) {
+  resetDailyCounterIfNeeded();
 
   const ep = endpoints(key);
 
@@ -273,4 +304,37 @@ export async function briefing() {
     byTicker: byTicker.slice(0, 20),
     summary,
   };
+}
+
+export async function briefing() {
+  const key = process.env.FMP_API_KEY;
+  if (!key) {
+    console.warn('[Congress] FMP_API_KEY not set — skipping congressional data. Get a free key at financialmodelingprep.com');
+    return {
+      status:  'unconfigured',
+      message: 'FMP_API_KEY not set.',
+      topBuys: [], topSells: [], heavyHitters: [],
+      summary: 'Congressional data unavailable — FMP_API_KEY not configured.',
+    };
+  }
+
+  // ── Cache check ────────────────────────────────────────────────────────────
+  if (cacheHit()) {
+    const age = Date.now() - _cache.fetchedAt;
+    console.log(`[Congress] Cache hit (age: ${ageLabel(age)}, TTL: ${ageLabel(CACHE_TTL_MS)}, FMP calls today: ~${_dailyCallCount})`);
+    return { ..._cache.result, cached: true, cacheAgeMs: age };
+  }
+
+  // ── Fresh fetch ────────────────────────────────────────────────────────────
+  console.log(`[Congress] Cache miss — fetching fresh data (FMP calls today so far: ~${_dailyCallCount})`);
+  const result = await _fetchFresh(key);
+  console.log(`[Congress] Fetch complete. FMP calls today: ~${_dailyCallCount} (limit: 250)`);
+
+  // Cache everything except error states so a transient failure doesn't
+  // wipe out valid data we already have.
+  if (result.status === 'ok') {
+    _cache = { result, fetchedAt: Date.now() };
+  }
+
+  return result;
 }
