@@ -3,7 +3,7 @@
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
 import express from 'express';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
@@ -26,6 +26,9 @@ import { ThetaLLM } from './lib/llm/council/theta.mjs';
 import { GregorLLM } from './lib/llm/council/omega.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
+import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
+import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
+import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -349,12 +352,12 @@ app.get('/api/redline', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 });
-// List all reports
+// List all reports (.html and .md for inline viewing; .docx listed for download)
 app.get('/api/reports', (req, res) => {
   try {
     const dir = join(process.cwd(), 'reports');
     const files = readdirSync(dir)
-      .filter(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.html'))
+      .filter(f => f.endsWith('.md') || f.endsWith('.txt') || f.endsWith('.html') || f.endsWith('.docx'))
       .sort()
       .reverse(); // newest first
     res.json({ reports: files });
@@ -363,14 +366,51 @@ app.get('/api/reports', (req, res) => {
   }
 });
 
-// Read a single report by filename
+// Read a single report by filename (text/html only — use /download for .docx)
 app.get('/api/reports/:filename', (req, res) => {
   try {
     const safe = req.params.filename.replace(/[^a-zA-Z0-9._\-]/g, '');
+    if (safe.endsWith('.docx')) {
+      return res.status(400).json({ error: 'Use /api/reports/download/:filename for .docx files.' });
+    }
     const content = readFileSync(join(process.cwd(), 'reports', safe), 'utf8');
     res.json({ content });
   } catch (err) {
     res.status(404).json({ error: 'Report not found' });
+  }
+});
+
+// Download a .docx report as binary
+app.get('/api/reports/download/:filename', (req, res) => {
+  try {
+    const safe = req.params.filename.replace(/[^a-zA-Z0-9._\-]/g, '');
+    const filePath = join(process.cwd(), 'reports', safe);
+    if (!existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(500).json({ error: 'Download failed' });
+  }
+});
+
+// Delete a report (and its .docx twin if it exists)
+app.delete('/api/reports/:filename', (req, res) => {
+  try {
+    const safe = req.params.filename.replace(/[^a-zA-Z0-9._\-]/g, '');
+    const dir  = join(process.cwd(), 'reports');
+    const filePath = join(dir, safe);
+    if (!existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    unlinkSync(filePath);
+    // If deleting an HTML review, also remove the .docx twin
+    if (safe.endsWith('.html')) {
+      const twin = join(dir, safe.replace('.html', '.docx'));
+      if (existsSync(twin)) unlinkSync(twin);
+    }
+    console.log(`[Reports] Deleted: ${safe}`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Delete failed: ' + err.message });
   }
 });
 
@@ -707,7 +747,74 @@ async function start() {
 
     // Schedule recurring sweeps
     setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+
+    // ── Review Mode — runs once daily after market close (4:30 PM ET) ──────
+    // Resolves open positions against live portfolio, then generates a
+    // performance review report if new data exists since the last review.
+    scheduleReviewMode();
+
+    // ── Stop-Loss Watcher — runs every 90s, completely independent of council ──
+    // Fires hard exits on open logged positions when stop-loss, trailing stop,
+    // or INTRADAY EOD thresholds are breached. No LLM involved.
+    startStopLossWatcher(snapTrade, telegramAlerter);
   });
+}
+
+/**
+ * Schedules the Review Mode to fire at 4:30 PM ET daily.
+ * On startup, checks if today's review has already run; if not, fires immediately.
+ * Uses a simple polling interval (every minute) to avoid timezone complexity.
+ */
+function scheduleReviewMode() {
+  let lastReviewDate = null;
+
+  async function runReview() {
+    const now = new Date();
+    const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+    const et    = new Date(etStr);
+    const today = et.toISOString().slice(0, 10);
+    const hour  = et.getHours();
+    const min   = et.getMinutes();
+
+    // Only run after 4:30 PM ET and once per calendar day
+    if ((hour < 16 || (hour === 16 && min < 30)) && lastReviewDate !== null) return;
+    if (lastReviewDate === today) return;
+
+    console.log('[Review] Market close review starting...');
+    lastReviewDate = today;
+
+    try {
+      // Phase 2 — reconcile open positions against live portfolio
+      const resolverSummary = await resolvePositions(snapTrade);
+      console.log(`[Review] Resolver complete — resolved: ${resolverSummary.resolved}, updated: ${resolverSummary.updated}`);
+
+      // Phase 3 — run strategic review council (computes stats, writes lastReview.json, generates report)
+      const reviewResult = await runReviewCouncil();
+      if (reviewResult?.reportFile) {
+        const { stats, reportFile } = reviewResult;
+        const wrPct = (stats.winRate * 100).toFixed(0);
+        const pf    = stats.profitFactor === 999 ? '∞' : stats.profitFactor.toFixed(2);
+        console.log(`[Review] Performance review generated: ${reportFile}`);
+        telegramAlerter.sendMessage?.(
+          `◈ RedLine Review complete\n` +
+          `Win Rate: ${wrPct}% | Profit Factor: ${pf}\n` +
+          `Resolved: ${stats.resolved} / ${stats.totalDecisions} decisions\n` +
+          `Report: ${reportFile}`
+        );
+      } else if (reviewResult) {
+        console.log('[Review] lastReview.json updated — no new report generated (no new resolved decisions).');
+      } else {
+        console.log('[Review] No resolved decisions — review skipped.');
+      }
+    } catch (err) {
+      console.error('[Review] Review Mode failed:', err.message);
+    }
+  }
+
+  // Check every minute whether it's time to run the review
+  setInterval(runReview, 60 * 1000);
+  // Also attempt on startup (will skip if before 4:30 PM ET)
+  runReview();
 }
 
 // Graceful error handling — log full stack traces for diagnosis
