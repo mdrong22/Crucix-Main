@@ -593,8 +593,8 @@ function parseReport(name,allNames){
     displayDate=datePart.replace(/T.*/,'').replace(/-/g,'/');
   }
 
-  // Docx twin path (for download link in modal)
-  const docxTwin=htmlNames.has(base)?base+'.docx':null;
+  // Docx twin — only set if the .docx actually exists in the file list
+  const docxTwin=allNames.includes(base+'.docx')?base+'.docx':null;
 
   return{name,ext,type,displayName,displayDate,docxTwin};
 }
