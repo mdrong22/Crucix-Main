@@ -3,7 +3,7 @@
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
 import express from 'express';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
