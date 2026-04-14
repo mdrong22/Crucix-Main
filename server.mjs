@@ -77,7 +77,7 @@ const discordAlerter = new DiscordAlerter(config.discord || {});
 const getLiveQuote = snapTrade.GetLiveQuote.bind(snapTrade);
 const redLineEnabled = config.redline.enabled
 
-const scout = new ScoutLLM(config.redline.scout, getLiveQuote);
+const scout = new ScoutLLM(config.redline.scout, getLiveQuote, groqIdeasFallback);
 const bull = new PhiLLM(config.redline.phi || {})
 const bear = new ThetaLLM(config.redline.theta)
 const omega = new GregorLLM(config.redline.omega)
@@ -637,18 +637,15 @@ async function CheckDebateCycle(context) {
   }
 
   // 1. GATHER SCOUT'S INTENT IMMEDIATELY (Crucial for state)
-  const tickerMatch = result.match(/(?:Ticker|Symbol):\s*\**\$?([A-Z]+)\**/i);
-
+  const tickerMatch = result.match(/(?:Ticker|Symbol):\s*[\*\s]*\$?([A-Z]{1,5})\b/i);
   // 2. Trigger: Matches everything after "Trigger:" until the end of the line
-  const triggerMatch = result.match(/Trigger:\s*\**(?<trigger>.*)/i);
-  
+  const triggerMatch = result.match(/Trigger:\s*\**(?<trigger>[\s\S]*?)(?=\n\n|\*\*|$)/i);  
   // 3. Data: Matches everything after "The Data:" or "Data:" until the end of the line
-  const dataMatch = result.match(/(?:The\s+)?Data:\s*\**(?<data>.*)/i);
-  
+  const dataMatch = result.match(/(?:The\s+)?Data:\s*\**(?<data>[\s\S]*?)(?=\n\n|\*\*|$)/i);  
   if (tickerMatch) {
-      const extractedTicker = tickerMatch[1].trim();
-      const extractedTrigger = triggerMatch?.groups?.trigger?.replace(/\**/g, '').trim() || "Manual Escalation";
-      const extractedData = dataMatch?.groups?.data?.replace(/\**/g, '').trim() || "Context provided in transcript";
+    const extractedTicker = tickerMatch[1].trim().toUpperCase();
+    const extractedTrigger = triggerMatch?.groups?.trigger?.replace(/[\*\#]/g, '').trim() || "Manual Escalation";
+    const extractedData = dataMatch?.groups?.data?.replace(/[\*\#]/g, '').trim() || "Context provided in transcript";
   
       lastDecision = {
           ticker: extractedTicker,
@@ -693,16 +690,26 @@ async function CheckDebateCycle(context) {
       telegramAlerter.sendTradeAlert(trade);
 
       // Reporting logic (using the light transcript fix from earlier)
-      try {
-          const cleanTranscript = trade.transcript
-              .filter(m => m.role !== 'system')
-              .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
-              .join('\n\n');
-          console.log(`Cleaned Transcript ${cleanTranscript}`)
-          setTimeout(() => {console.log(`[REDLINE] Initializing Scribe...`)}, 2000)
-          const res = await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
-          generateLocalReport(trade.symbol, cleanTranscript, res.text )
-      } catch (e) { console.log('SCRIBE FAILED: ', e.message) }
+      const sleep = (ms) => new Promise(res => res(setTimeout, ms));
+
+    try {
+        const cleanTranscript = trade.transcript
+            .filter(m => m.role !== 'system')
+            .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
+            .join('\n\n');
+
+        console.log(`[SCRIBE] Cleaned Transcript Length: ${cleanTranscript.length} chars`);
+        // ACTUAL 2-second pause to clear the RPM bucket from previous council calls
+        console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
+        await new Promise(resolve => setTimeout(resolve, 10000)); 
+        console.log(`[REDLINE] Initializing Scribe with gemini-3.1-flash-lite...`);
+        const res = await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
+        await generateLocalReport(trade.symbol, cleanTranscript, res.text);
+        console.log(`[SCRIBE] ✅ Report generated for ${trade.symbol}`);
+
+    } catch (e) { 
+        console.log('SCRIBE FAILED: ', e.message);
+    }
   }
 }
 // === Startup ===
