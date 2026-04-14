@@ -14,6 +14,7 @@ import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas, runPortfolioBrief } from './lib/llm/ideas.mjs';
+import { OpenAIProvider } from './lib/llm/openai.mjs';
 import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
@@ -55,6 +56,21 @@ const memory = new MemoryManager(RUNS_DIR);
 
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
+
+// Groq fallback for LLM ideas — reuses the Phi/Bull Groq key already in config.
+// llama-3.3-70b-versatile: LPU inference, reliable JSON output, separate API from Gemini.
+const groqIdeasFallback = config.redline.phi?.apiKey
+  ? new OpenAIProvider({
+      name:    'groq',
+      apiKey:  config.redline.phi.apiKey,
+      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile',
+      baseUrl: config.redline.phi.baseUrl   || 'https://api.groq.com/openai/v1',
+    })
+  : null;
+if (groqIdeasFallback?.isConfigured) {
+  console.log(`[Crucix] LLM ideas fallback ready: Groq / ${groqIdeasFallback.model}`);
+}
+
 const snapTrade = new SnapTrade(config.snapTrade)
 const telegramAlerter = new TelegramAlerter({...config.telegram, snapTradeInstance: snapTrade});
 const discordAlerter = new DiscordAlerter(config.discord || {});
@@ -469,7 +485,7 @@ async function runSweepCycle() {
         console.log('[Crucix] Generating LLM trade ideas...');
         
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders);
+        const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders, groqIdeasFallback);
         if (ideasResult) {
           const { llmIdeas, context } = ideasResult;
           currentContext = context;
