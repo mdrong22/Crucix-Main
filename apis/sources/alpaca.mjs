@@ -41,3 +41,47 @@ export async function getHistoricalTechnicals(symbol, timeframe = '1Min', limit 
     return null;
   }
 }
+
+export async function getLongTermTechnicals(symbol) {
+  const now = new Date();
+  // We go back ~300 days to guarantee 200 trading days (accounting for weekends/holidays)
+  const nearlyOneYearAgo = new Date(now.setDate(now.getDate() - 300)).toISOString();
+
+  const apiKey = process.env.ALPACA_API_KEY;
+  const apiSecret = process.env.ALPACA_SECRET;
+  
+  // Note: We use timeframe=1Day and limit=200
+  const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbol}&timeframe=1Day&limit=200&adjustment=split&feed=sip&sort=desc&start=${nearlyOneYearAgo}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+        'accept': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    const bars = data.bars[symbol] || [];
+
+    if (bars.length < 200) {
+      console.warn(`[REDLINE] Insufficient data for 200MA on ${symbol}: Found ${bars.length}`);
+      return null;
+    }
+
+    // Calculate Simple Moving Average (SMA)
+    const sum = bars.reduce((acc, bar) => acc + bar.c, 0);
+    const ma200 = sum / bars.length;
+
+    return {
+      symbol,
+      ma200: ma200.toFixed(2),
+      isBelowMA200: bars[0].c < ma200, // Comparison with latest close
+      dataPoints: bars.length
+    };
+  } catch (error) {
+    console.error(`[REDLINE] 200MA Fetch Error for ${symbol}:`, error);
+    return null;
+  }
+}
