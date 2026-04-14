@@ -44,9 +44,10 @@ redline: {
   },
 
   scout: {
-    apiKey: process.env.SCOUT_API_KEY || null,
-    model: process.env.SCOUT_LLM_MODEL || null,
-    baseUrl: process.env.GEMINI_BASE_URL || null,
+    apiKey:        process.env.SCOUT_API_KEY        || null,
+    model:         process.env.SCOUT_LLM_MODEL      || null,
+    fallbackModel: process.env.SCOUT_FALLBACK_MODEL || 'gemini-2.5-flash',
+    baseUrl:       process.env.GEMINI_BASE_URL      || null,
   },
 
   theta: {
@@ -56,9 +57,10 @@ redline: {
   },
 
   scribe: {
-    apiKey: process.env.SCRIBE_API_KEY || null,
-    model: process.env.SCRIBE_MODEL || null,
-    baseUrl: process.env.GEMINI_BASE_URL || null
+    apiKey:        process.env.SCRIBE_API_KEY         || null,
+    model:         process.env.SCRIBE_MODEL           || null,
+    fallbackModel: process.env.SCRIBE_FALLBACK_MODEL  || 'gemini-2.5-flash',
+    baseUrl:       process.env.GEMINI_BASE_URL        || null,
   },
 
   omega: {

@@ -514,7 +514,7 @@ async function runSweepCycle() {
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
-    if(redLineEnabled) await CheckDebateCycle(currentContext || [])
+    if(redLineEnabled && currentContext) await CheckDebateCycle(currentContext)
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
 
@@ -591,7 +591,7 @@ async function CheckDebateCycle(context) {
       console.warn("[REDLINE] 🛡️ PDT PROTECTION ACTIVE: Bot is restricted to Overnight Holds.");
   }
   const result = await scout.assessInfo(
-      ...context,
+      context,
       currentData,
       snapTrade.GetCurrentPortfolio(),
       snapTrade.GetCurrentAcccountHoldings(),
