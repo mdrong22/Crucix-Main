@@ -469,15 +469,23 @@ async function runSweepCycle() {
         console.log('[Crucix] Generating LLM trade ideas...');
         
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const {llmIdeas, context} = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders);
-        currentContext = context
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
+        const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders);
+        if (ideasResult) {
+          const { llmIdeas, context } = ideasResult;
+          currentContext = context;
+          if (llmIdeas) {
+            synthesized.ideas = llmIdeas;
+            synthesized.ideasSource = 'llm';
+            console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
+          } else {
+            synthesized.ideas = [];
+            synthesized.ideasSource = 'llm-failed';
+          }
         } else {
+          // generateLLMIdeas returned null — model failed, preserve last known context for debate
           synthesized.ideas = [];
           synthesized.ideasSource = 'llm-failed';
+          console.warn('[Crucix] LLM ideas returned null — sweep continues, using prior context for debate.');
         }
       } catch (llmErr) {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);

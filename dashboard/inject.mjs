@@ -148,7 +148,10 @@ function loadOpenSkyFallback(currentTimestamp) {
 // === RSS Fetching ===
 async function fetchRSS(url, source) {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Crucix/2.0; +https://crucix.io)' },
+    });
     const xml = await res.text();
     const items = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
