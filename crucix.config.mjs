@@ -10,7 +10,6 @@ export default {
     provider:      process.env.LLM_PROVIDER       || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
     apiKey:        process.env.LLM_API_KEY         || null,
     model:         process.env.LLM_MODEL           || null,
-    fallbackModel: process.env.LLM_FALLBACK_MODEL  || 'gemini-2.5-flash', // used if primary model fails
     baseUrl:       process.env.OLLAMA_BASE_URL      || null,
   },
 
@@ -36,6 +35,11 @@ export default {
     accountId: process.env.SNAPTRADE_ACCOUNT_ID || null,
     authId: process.env.SNAPTRADE_AUTH_ID || null ,
   },
+
+  fallback: {
+    apiKey: process.env.GROQ_FALLBACK_KEY || null
+  },
+  
 redline: {
   enabled: true,
   phi: {
@@ -47,7 +51,6 @@ redline: {
   scout: {
     apiKey:        process.env.SCOUT_API_KEY        || null,
     model:         process.env.SCOUT_LLM_MODEL      || null,
-    fallbackModel: process.env.SCOUT_FALLBACK_MODEL || 'gemini-2.5-flash',
     baseUrl:       process.env.GEMINI_BASE_URL      || null,
   },
 
@@ -60,7 +63,6 @@ redline: {
   scribe: {
     apiKey:        process.env.SCRIBE_API_KEY         || null,
     model:         process.env.SCRIBE_MODEL           || null,
-    fallbackModel: process.env.SCRIBE_FALLBACK_MODEL  || 'gemini-2.5-flash',
     baseUrl:       process.env.GEMINI_BASE_URL        || null,
   },
 
@@ -70,6 +72,7 @@ redline: {
     baseUrl: process.env.PUTER_BASE_URL,
   },
 },
+
 
   
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs

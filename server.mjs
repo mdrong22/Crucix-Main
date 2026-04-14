@@ -59,10 +59,10 @@ const llmProvider = createLLMProvider(config.llm);
 
 // Groq fallback for LLM ideas — reuses the Phi/Bull Groq key already in config.
 // llama-3.3-70b-versatile: LPU inference, reliable JSON output, separate API from Gemini.
-const groqIdeasFallback = config.redline.phi?.apiKey
+const groqIdeasFallback = config.fallback.apiKey
   ? new OpenAIProvider({
       name:    'groq',
-      apiKey:  config.redline.phi.apiKey,
+      apiKey:  config.fallback.apiKey,
       model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile',
       baseUrl: config.redline.phi.baseUrl   || 'https://api.groq.com/openai/v1',
     })
