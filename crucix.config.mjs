@@ -7,10 +7,11 @@ export default {
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
-    provider:      process.env.LLM_PROVIDER       || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
-    apiKey:        process.env.LLM_API_KEY         || null,
-    model:         process.env.LLM_MODEL           || null,
-    baseUrl:       process.env.OLLAMA_BASE_URL      || null,
+    provider:      process.env.LLM_PROVIDER        || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
+    apiKey:        process.env.LLM_API_KEY          || null,
+    model:         process.env.LLM_MODEL            || null,
+    fallbackModel: process.env.LLM_FALLBACK_MODEL   || 'gemini-2.5-flash',
+    baseUrl:       process.env.OLLAMA_BASE_URL       || null,
   },
 
   telegram: {
@@ -36,10 +37,11 @@ export default {
     authId: process.env.SNAPTRADE_AUTH_ID || null ,
   },
 
+  // Groq fallback — used when primary Gemini models fail for LLM ideas generation
   fallback: {
-    apiKey: process.env.GROQ_FALLBACK_KEY || null
+    apiKey: process.env.GROQ_FALLBACK_KEY || null,
   },
-  
+
 redline: {
   enabled: true,
   phi: {
@@ -51,6 +53,7 @@ redline: {
   scout: {
     apiKey:        process.env.SCOUT_API_KEY        || null,
     model:         process.env.SCOUT_LLM_MODEL      || null,
+    fallbackModel: process.env.SCOUT_FALLBACK_MODEL || 'gemini-2.5-flash',
     baseUrl:       process.env.GEMINI_BASE_URL      || null,
   },
 
@@ -61,9 +64,10 @@ redline: {
   },
 
   scribe: {
-    apiKey:        process.env.SCRIBE_API_KEY         || null,
-    model:         process.env.SCRIBE_MODEL           || null,
-    baseUrl:       process.env.GEMINI_BASE_URL        || null,
+    apiKey:        process.env.SCRIBE_API_KEY          || null,
+    model:         process.env.SCRIBE_MODEL            || null,
+    fallbackModel: process.env.SCRIBE_FALLBACK_MODEL   || 'gemini-2.5-flash',
+    baseUrl:       process.env.GEMINI_BASE_URL         || null,
   },
 
   omega: {

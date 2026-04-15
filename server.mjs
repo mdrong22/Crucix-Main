@@ -91,9 +91,9 @@ const memory = new MemoryManager(RUNS_DIR);
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
 
-// Groq fallback for LLM ideas — reuses the Phi/Bull Groq key already in config.
+// Groq fallback for LLM ideas — uses config.fallback.apiKey (GROQ_FALLBACK_KEY in .env).
 // llama-3.3-70b-versatile: LPU inference, reliable JSON output, separate API from Gemini.
-const groqIdeasFallback = config.fallback.apiKey
+const groqIdeasFallback = config.fallback?.apiKey
   ? new OpenAIProvider({
       name:    'groq',
       apiKey:  config.fallback.apiKey,
@@ -717,9 +717,23 @@ async function CheckDebateCycle(context) {
         // ACTUAL 2-second pause to clear the RPM bucket from previous council calls
         console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
         await new Promise(resolve => setTimeout(resolve, 10000)); 
-        console.log(`[REDLINE] Initializing Scribe with gemini-3.1-flash-lite...`);
-        const res = await scribe.complete(ScribePrompt, cleanTranscript, {}, true);
-        await generateLocalReport(trade.symbol, cleanTranscript, res.text);
+        console.log(`[REDLINE] Initializing Scribe...`);
+        // No activateWeb — reduces token pressure and quota usage
+        // Retry up to 2x with 30s backoff on 429 before giving up
+        let scribeRes;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 2048 }, true);
+            break;
+          } catch (err) {
+            const is429 = err.message?.includes('429') || err.message?.includes('quota');
+            if (is429 && attempt < 3) {
+              console.warn(`[SCRIBE] 429 rate limit (attempt ${attempt}/3) — waiting 30s...`);
+              await new Promise(r => setTimeout(r, 30000));
+            } else { throw err; }
+          }
+        }
+        await generateLocalReport(trade.symbol, cleanTranscript, scribeRes.text);
         console.log(`[SCRIBE] ✅ Report generated for ${trade.symbol}`);
 
     } catch (e) { 
@@ -812,7 +826,22 @@ async function start() {
  * Uses a simple polling interval (every minute) to avoid timezone complexity.
  */
 function scheduleReviewMode() {
-  let lastReviewDate = null;
+  // Seed from reviewState.json so restarts don't re-trigger a review that already ran today
+  const REVIEW_STATE_PATH = join(ROOT, 'runs', 'reviewState.json');
+  let lastReviewDate = (() => {
+    try {
+      if (existsSync(REVIEW_STATE_PATH)) {
+        const state = JSON.parse(readFileSync(REVIEW_STATE_PATH, 'utf8'));
+        if (state.lastReviewAt) {
+          const et = new Date(
+            new Date(state.lastReviewAt).toLocaleString('en-US', { timeZone: 'America/New_York' })
+          );
+          return et.toISOString().slice(0, 10);
+        }
+      }
+    } catch { /* no state yet */ }
+    return null;
+  })();
 
   async function runReview() {
     const now = new Date();
@@ -822,8 +851,9 @@ function scheduleReviewMode() {
     const hour  = et.getHours();
     const min   = et.getMinutes();
 
-    // Only run after 4:30 PM ET and once per calendar day
-    if ((hour < 16 || (hour === 16 && min < 30)) && lastReviewDate !== null) return;
+    // Gate 1: must be 4:30 PM ET or later — always enforced, never skipped on startup
+    if (hour < 16 || (hour === 16 && min < 30)) return;
+    // Gate 2: only once per calendar day
     if (lastReviewDate === today) return;
 
     console.log('[Review] Market close review starting...');
