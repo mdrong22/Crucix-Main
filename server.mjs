@@ -28,6 +28,7 @@ import { GregorLLM } from './lib/llm/council/omega.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
+import { logDecisions, loadDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 
@@ -47,7 +48,40 @@ let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 let currentContext = null
-let lastDecision = null
+
+// Trims a debate transcript for Scribe — each turn capped at maxChars to stay
+// within Gemini's token budget. Scribe is told to summarise, not quote verbatim,
+// so truncating individual turns doesn't lose analytical value.
+function compactTranscript(transcript, maxCharsPerTurn = 800) {
+  return (transcript || [])
+    .filter(m => m.role !== 'system')
+    .map(m => {
+      const label   = m.name || m.role.toUpperCase();
+      const content = String(m.content || '');
+      const trimmed = content.length > maxCharsPerTurn
+        ? content.slice(0, maxCharsPerTurn) + '…[truncated for brevity]'
+        : content;
+      return `${label}: ${trimmed}`;
+    })
+    .join('\n\n');
+}
+
+// Reads the most recent logged decision from decisions.json.
+// Replaces the old in-memory lastDecision — survives restarts.
+function getLastDecision() {
+  try {
+    const all = loadDecisions();
+    if (!all.length) return null;
+    const last = all[all.length - 1];
+    return {
+      ticker:  last.ticker,
+      trigger: last.signals?.trigger || null,
+      date:    last.timestamp,
+    };
+  } catch {
+    return null;
+  }
+}
 const startTime = Date.now();
 const sseClients = new Set();
 
@@ -614,6 +648,9 @@ async function CheckDebateCycle(context) {
   if (isRestricted) {
       console.warn("[REDLINE] 🛡️ PDT PROTECTION ACTIVE: Bot is restricted to Overnight Holds.");
   }
+  const lastDecision = getLastDecision();
+  console.log(`[REDLINE] Last decision → Ticker: ${lastDecision?.ticker || 'None'} | Trigger: ${lastDecision?.trigger || 'None'} | Date: ${lastDecision?.date || 'None'}`);
+
   const result = await scout.assessInfo(
       context,
       currentData,
@@ -629,34 +666,10 @@ async function CheckDebateCycle(context) {
   console.log(`[SCOUT] ${result}`);
   if (!result) return;
 
-  
-  // 2. SCOUT "QUIET" CHECK
+  // SCOUT "QUIET" CHECK
   if (result.toUpperCase().includes("QUIET")) {
       console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
       return;
-  }
-
-  // 1. GATHER SCOUT'S INTENT IMMEDIATELY (Crucial for state)
-  const tickerMatch = result.match(/(?:Ticker|Symbol):\s*[\*\s]*\$?([A-Z]{1,5})\b/i);
-  // 2. Trigger: Matches everything after "Trigger:" until the end of the line
-  const triggerMatch = result.match(/Trigger:\s*\**(?<trigger>[\s\S]*?)(?=\n\n|\*\*|$)/i);  
-  // 3. Data: Matches everything after "The Data:" or "Data:" until the end of the line
-  const dataMatch = result.match(/(?:The\s+)?Data:\s*\**(?<data>[\s\S]*?)(?=\n\n|\*\*|$)/i);  
-  if (tickerMatch) {
-    const extractedTicker = tickerMatch[1].trim().toUpperCase();
-    const extractedTrigger = triggerMatch?.groups?.trigger?.replace(/[\*\#]/g, '').trim() || "Manual Escalation";
-    const extractedData = dataMatch?.groups?.data?.replace(/[\*\#]/g, '').trim() || "Context provided in transcript";
-  
-      lastDecision = {
-          ticker: extractedTicker,
-          trigger: extractedTrigger,
-          data: extractedData,
-          date: new Date().toLocaleString()
-      };
-      
-      console.log(`[REDLINE] Memory Latched → ${extractedTicker} | Trigger: ${extractedTrigger.substring(0, 30)}...`);
-  } else {
-    console.log(`[ERROR] REGEX FAILED FOR LAST DECISION | RAW RESULT ${result}`)
   }
 
   // 3. ESCALATE TO COUNCIL
@@ -689,16 +702,18 @@ async function CheckDebateCycle(context) {
       console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`);
       telegramAlerter.sendTradeAlert(trade);
 
-      // Reporting logic (using the light transcript fix from earlier)
-      const sleep = (ms) => new Promise(res => res(setTimeout, ms));
+      // Log to decisions.json only after confirmed execution
+      try {
+        const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
+        logDecisions([trade], result, liveVix, remaining);
+      } catch (err) {
+        console.error('[DecisionLogger] Failed to log executed trade:', err.message);
+      }
 
+      // Reporting — compact the transcript first to avoid Gemini 429/409 token errors
     try {
-        const cleanTranscript = trade.transcript
-            .filter(m => m.role !== 'system')
-            .map(m => `${m.name || m.role.toUpperCase()}: ${m.content}`)
-            .join('\n\n');
-
-        console.log(`[SCRIBE] Cleaned Transcript Length: ${cleanTranscript.length} chars`);
+        const cleanTranscript = compactTranscript(trade.transcript);
+        console.log(`[SCRIBE] Transcript compacted to ${cleanTranscript.length} chars`);
         // ACTUAL 2-second pause to clear the RPM bucket from previous council calls
         console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
         await new Promise(resolve => setTimeout(resolve, 10000)); 
