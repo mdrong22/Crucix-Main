@@ -71,8 +71,12 @@ redline: {
   },
 
   omega: {
-    apiKey: process.env.ANTHROPIC_API_KEY || null,
-    model:  process.env.OMEGA_MODEL       || 'claude-opus-4-6',
+    model: process.env.PUTER_MODEL,
+    apiKey: process.env.PUTER_AUTH_TOKEN,
+    fallback: {
+      apiKey: process.env.ANTHROPIC_API_KEY || null,
+      model:  process.env.OMEGA_MODEL       || 'claude-opus-4-6',
+    },
   },
 },
 
