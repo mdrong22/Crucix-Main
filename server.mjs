@@ -655,7 +655,6 @@ async function CheckDebateCycle(context) {
       context,
       currentData,
       snapTrade.GetCurrentPortfolio(),
-      snapTrade.GetCurrentAcccountHoldings(),
       lastDecision,
       buyingPower,
       openAccountOrders,
@@ -704,7 +703,10 @@ async function CheckDebateCycle(context) {
 
       // Log to decisions.json only after confirmed execution
       try {
-        const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
+        // VIX: try FRED (daily value) → yfinance ^VIX quote → N/A
+        const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
+            ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price
+            ?? 'N/A';
         logDecisions([trade], result, liveVix, remaining);
       } catch (err) {
         console.error('[DecisionLogger] Failed to log executed trade:', err.message);

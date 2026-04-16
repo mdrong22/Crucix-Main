@@ -1,16 +1,46 @@
 /**
- * Fetches historical bar data from Alpaca to calculate technicals.
- * @param {string} symbol - Ticker symbol
- * @param {string} timeframe - '1Min', '5Min', '1Day' etc.
- * @param {number} limit - Number of bars (default 14 for RSI)
+ * Compute RSI-14 from an array of closing prices.
+ * @param {number[]} closes - Array of closing prices, NEWEST FIRST (desc order from Alpaca).
+ * @param {number} period   - RSI period (default 14)
+ * @returns {number|null}   - RSI value 0-100, or null if insufficient data
  */
-export async function getHistoricalTechnicals(symbol, timeframe = '1Min', limit = 14) {
-  const now = new Date();
-  const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000)).toISOString();
+function calcRSI(closes, period = 14) {
+  // Need at least period+1 values to calculate period differences
+  if (!closes || closes.length < period + 1) return null;
 
-  const apiKey = process.env.ALPACA_API_KEY; // Provided by environment
-  const apiSecret = process.env.ALPACA_SECRET; // Provided by environment
-  const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbol}&timeframe=${timeframe}&limit=${limit}&adjustment=raw&feed=sip&sort=desc&start=${oneHourAgo}`;
+  // closes[0] = most recent, closes[1] = one bar ago, etc.
+  // differences: diff[i] = closes[i] - closes[i+1]  (positive = gain, negative = loss)
+  let gains = 0;
+  let losses = 0;
+  for (let i = 0; i < period; i++) {
+    const diff = closes[i] - closes[i + 1];
+    if (diff > 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+
+  if (avgLoss === 0) return 100; // No losses → fully overbought
+  const rs = avgGain / avgLoss;
+  return parseFloat((100 - (100 / (1 + rs))).toFixed(1));
+}
+
+/**
+ * Fetches historical bar data from Alpaca and computes technicals including RSI-14.
+ * @param {string} symbol    - Ticker symbol
+ * @param {string} timeframe - '1Min', '5Min', '1Day' etc.
+ * @param {number} limit     - Number of bars (15+ for RSI-14, default 20)
+ */
+export async function getHistoricalTechnicals(symbol, timeframe = '5Min', limit = 20) {
+  const now = new Date();
+  // Extend lookback to 3 hours to ensure we get enough 5-min bars during regular sessions
+  const lookbackMs = timeframe === '1Min' ? 60 * 60 * 1000 : 3 * 60 * 60 * 1000;
+  const startTime = new Date(now.getTime() - lookbackMs).toISOString();
+
+  const apiKey = process.env.ALPACA_API_KEY;
+  const apiSecret = process.env.ALPACA_SECRET;
+  const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${symbol}&timeframe=${timeframe}&limit=${limit}&adjustment=raw&feed=sip&sort=desc&start=${startTime}`;
 
   try {
     const response = await fetch(url, {
@@ -21,20 +51,24 @@ export async function getHistoricalTechnicals(symbol, timeframe = '1Min', limit 
       }
     });
     const data = await response.json();
-    
-    const bars = data.bars[symbol] || [];
+
+    const bars = data.bars?.[symbol] || [];
     if (bars.length === 0) return null;
 
-    // Basic RSI calculation logic would go here using bars.map(b => b.c)
     const latestClose = bars[0].c;
     const previousClose = bars[bars.length - 1].c;
     const momentum = ((latestClose - previousClose) / previousClose) * 100;
+
+    // RSI-14 computed from close prices (bars sorted desc → newest first)
+    const closes = bars.map(b => b.c);
+    const rsi = calcRSI(closes, 14);
 
     return {
       symbol,
       latestClose,
       momentum: momentum.toFixed(2),
-      bars: bars.slice(0, 5) // Return last few for context
+      rsi: rsi !== null ? rsi : null,
+      bars: bars.slice(0, 5), // Return last few bars for context
     };
   } catch (error) {
     console.error(`[REDLINE] Bar Fetch Error for ${symbol}:`, error);
