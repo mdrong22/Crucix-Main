@@ -49,6 +49,11 @@ redline: {
     model:         process.env.GROQ_MODEL            || null,
     fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'qwen/qwen3-32b',
     baseUrl:       process.env.GROQ_BASE_URL         || null,
+    // HeyPuter unlimited fallback — fires after both Groq models are exhausted
+    puter: {
+      apiKey: process.env.PUTER_AUTH_TOKEN   || null,
+      model:  process.env.PHI_PUTER_MODEL    || 'claude-sonnet-4-6',
+    },
   },
 
   scout: {
@@ -59,9 +64,14 @@ redline: {
   },
 
   theta: {
-    apiKey: process.env.THETA_API_KEY,
-    model: process.env.THETA_MODEL,
-    baseUrl: process.env.THETA_BASE_URL
+    apiKey:  process.env.THETA_API_KEY  || null,
+    model:   process.env.THETA_MODEL    || null,
+    baseUrl: process.env.THETA_BASE_URL || null,
+    // HeyPuter unlimited fallback — fires when Qwen/primary is rate-limited
+    puter: {
+      apiKey: process.env.PUTER_AUTH_TOKEN    || null,
+      model:  process.env.THETA_PUTER_MODEL   || 'claude-sonnet-4-6',
+    },
   },
 
   scribe: {
