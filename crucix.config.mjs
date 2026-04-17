@@ -45,9 +45,10 @@ export default {
 redline: {
   enabled: true,
   phi: {
-    apiKey: process.env.GROQ_API_KEY || null,
-    model: process.env.GROQ_MODEL || null,
-    baseUrl: process.env.GROQ_BASE_URL || null
+    apiKey:        process.env.GROQ_API_KEY          || null,
+    model:         process.env.GROQ_MODEL            || null,
+    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'llama-3.3-70b-versatile',
+    baseUrl:       process.env.GROQ_BASE_URL         || null,
   },
 
   scout: {
