@@ -28,7 +28,7 @@ import { GregorLLM } from './lib/llm/council/omega.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
-import { logDecisions, loadDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
+import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 
@@ -651,6 +651,9 @@ async function CheckDebateCycle(context) {
   const lastDecision = getLastDecision();
   console.log(`[REDLINE] Last decision → Ticker: ${lastDecision?.ticker || 'None'} | Trigger: ${lastDecision?.trigger || 'None'} | Date: ${lastDecision?.date || 'None'}`);
 
+  const openPositionCount = getOpenDecisions().length;
+  console.log(`[REDLINE] Open logged positions: ${openPositionCount}`);
+
   const result = await scout.assessInfo(
       context,
       currentData,
@@ -659,7 +662,8 @@ async function CheckDebateCycle(context) {
       buyingPower,
       openAccountOrders,
       remaining,
-      stringifiedOrders24h
+      stringifiedOrders24h,
+      openPositionCount
   );
 
   console.log(`[SCOUT] ${result}`);
