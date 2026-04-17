@@ -111,10 +111,12 @@ const discordAlerter = new DiscordAlerter(config.discord || {});
 const getLiveQuote = snapTrade.GetLiveQuote.bind(snapTrade);
 const redLineEnabled = config.redline.enabled
 
+// Inject shared provider pool into each agent so fallback chains work
+const _providers = config.redline.providers || {};
 const scout = new ScoutLLM(config.redline.scout, getLiveQuote, groqIdeasFallback);
-const bull = new PhiLLM(config.redline.phi || {})
-const bear = new ThetaLLM(config.redline.theta)
-const omega = new GregorLLM(config.redline.omega)
+const bull  = new PhiLLM({ ...(config.redline.phi   || {}), providers: _providers });
+const bear  = new ThetaLLM({ ...(config.redline.theta || {}), providers: _providers });
+const omega = new GregorLLM({ ...(config.redline.omega || {}), providers: _providers });
 const scribe = new GeminiProvider(config.redline.scribe)
 
 const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)

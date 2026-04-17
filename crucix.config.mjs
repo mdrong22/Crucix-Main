@@ -44,16 +44,44 @@ export default {
 
 redline: {
   enabled: true,
+
+  // ── Free-tier provider pool (shared across Phi, Theta, Gregor) ──────────
+  // Sign up at each provider and add the keys to .env.
+  // All four are OpenAI-compatible — drop-in replacements for Groq.
+  //
+  //  Cerebras   → api.cerebras.ai/v1     — 30 RPM / 1M TPD  — CEREBRAS_API_KEY
+  //  SambaNova  → api.sambanova.ai/v1    — 20 RPM            — SAMBANOVA_API_KEY
+  //  NVIDIA NIM → integrate.api.nvidia.com/v1 — 40 RPM       — NVIDIA_API_KEY
+  //  OpenRouter → openrouter.ai/api/v1   — 20 RPM / 200 RPD  — OPENROUTER_API_KEY
+  providers: {
+    cerebras: {
+      apiKey:  process.env.CEREBRAS_API_KEY  || null,
+      model:   process.env.CEREBRAS_MODEL    || 'llama-3.3-70b-instruct',
+      baseUrl: 'https://api.cerebras.ai/v1',
+    },
+    sambanova: {
+      apiKey:  process.env.SAMBANOVA_API_KEY || null,
+      model:   process.env.SAMBANOVA_MODEL   || 'Meta-Llama-3.3-70B-Instruct',
+      baseUrl: 'https://api.sambanova.ai/v1',
+    },
+    nvidia: {
+      apiKey:  process.env.NVIDIA_API_KEY    || null,
+      model:   process.env.NVIDIA_MODEL      || 'meta/llama-3.3-70b-instruct',
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+    },
+    openrouter: {
+      apiKey:  process.env.OPENROUTER_API_KEY || null,
+      model:   process.env.OPENROUTER_MODEL   || 'deepseek/deepseek-r1:free',
+      baseUrl: 'https://openrouter.ai/api/v1',
+    },
+  },
+
   phi: {
     apiKey:        process.env.GROQ_API_KEY          || null,
     model:         process.env.GROQ_MODEL            || null,
-    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'openai/gpt-oss-20b',
+    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'llama-3.3-70b-versatile',
     baseUrl:       process.env.GROQ_BASE_URL         || null,
-    // HeyPuter unlimited fallback — fires after both Groq models are exhausted
-    puter: {
-      apiKey: process.env.PUTER_AUTH_TOKEN   || null,
-      model:  process.env.PHI_PUTER_MODEL    || 'claude-sonnet-4-6',
-    },
+    // Free-tier fallbacks come from the shared providers block above
   },
 
   scout: {
@@ -67,11 +95,7 @@ redline: {
     apiKey:  process.env.THETA_API_KEY  || null,
     model:   process.env.THETA_MODEL    || null,
     baseUrl: process.env.THETA_BASE_URL || null,
-    // HeyPuter unlimited fallback — fires when Qwen/primary is rate-limited
-    puter: {
-      apiKey: process.env.PUTER_AUTH_TOKEN    || null,
-      model:  process.env.THETA_PUTER_MODEL   || 'claude-sonnet-4-6',
-    },
+    // Free-tier fallbacks come from the shared providers block above
   },
 
   scribe: {
@@ -82,13 +106,12 @@ redline: {
   },
 
   omega: {
-    model:  process.env.PUTER_MODEL      || null,
-    apiKey: process.env.PUTER_AUTH_TOKEN || null,
+    // Primary chain: SambaNova → Cerebras → NVIDIA NIM → OpenRouter DeepSeek R1
+    // All come from the shared providers block above.
+    // Anthropic kept as absolute last resort (user has premium).
     fallback: {
       apiKey: process.env.ANTHROPIC_API_KEY || null,
-      // Sonnet has 5x higher RPM than Opus — better fallback target.
-      // Set OMEGA_MODEL=claude-opus-4-6 in .env to upgrade when quota allows.
-      model:  process.env.OMEGA_MODEL || 'claude-sonnet-4',
+      model:  process.env.OMEGA_MODEL       || 'claude-sonnet-4-6',
     },
   },
 },
