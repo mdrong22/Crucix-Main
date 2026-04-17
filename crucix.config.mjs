@@ -47,7 +47,7 @@ redline: {
   phi: {
     apiKey:        process.env.GROQ_API_KEY          || null,
     model:         process.env.GROQ_MODEL            || null,
-    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'qwen/qwen3-32b',
+    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'openai/gpt-oss-20b',
     baseUrl:       process.env.GROQ_BASE_URL         || null,
     // HeyPuter unlimited fallback — fires after both Groq models are exhausted
     puter: {
