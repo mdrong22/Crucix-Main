@@ -47,7 +47,7 @@ redline: {
   phi: {
     apiKey:        process.env.GROQ_API_KEY          || null,
     model:         process.env.GROQ_MODEL            || null,
-    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'llama-3.3-70b-versatile',
+    fallbackModel: process.env.PHI_FALLBACK_MODEL    || 'qwen/qwen3-32b',
     baseUrl:       process.env.GROQ_BASE_URL         || null,
   },
 
@@ -78,7 +78,7 @@ redline: {
       apiKey: process.env.ANTHROPIC_API_KEY || null,
       // Sonnet has 5x higher RPM than Opus — better fallback target.
       // Set OMEGA_MODEL=claude-opus-4-6 in .env to upgrade when quota allows.
-      model:  process.env.OMEGA_MODEL || 'claude-sonnet-4-6',
+      model:  process.env.OMEGA_MODEL || 'claude-sonnet-4',
     },
   },
 },
