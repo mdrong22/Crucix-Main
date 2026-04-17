@@ -72,11 +72,13 @@ redline: {
   },
 
   omega: {
-    model: process.env.PUTER_MODEL,
-    apiKey: process.env.PUTER_AUTH_TOKEN,
+    model:  process.env.PUTER_MODEL      || null,
+    apiKey: process.env.PUTER_AUTH_TOKEN || null,
     fallback: {
       apiKey: process.env.ANTHROPIC_API_KEY || null,
-      model:  process.env.OMEGA_MODEL       || 'claude-opus-4-6',
+      // Sonnet has 5x higher RPM than Opus — better fallback target.
+      // Set OMEGA_MODEL=claude-opus-4-6 in .env to upgrade when quota allows.
+      model:  process.env.OMEGA_MODEL || 'claude-sonnet-4-6',
     },
   },
 },
