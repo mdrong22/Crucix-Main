@@ -47,7 +47,8 @@ let currentData = null;    // Current synthesized dashboard data
 let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
-let currentContext = null
+let currentContext = null;
+let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 
 // Trims a debate transcript for Scribe — each turn capped at maxChars to stay
 // within Gemini's token budget. Scribe is told to summarise, not quote verbatim,
@@ -552,9 +553,17 @@ async function runSweepCycle() {
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
       if (telegramAlerter.isConfigured) {
-        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
-          console.error('[Crucix] Telegram alert error:', err.message);
-        });
+        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory)
+          .then(() => {
+            // Capture the latest geopolitical summary for Scout context next cycle
+            if (telegramAlerter.lastGeopoliticalSummary) {
+              lastGeopoliticalSummary = telegramAlerter.lastGeopoliticalSummary;
+              console.log('[Crucix] Geopolitical summary updated from Telegram evaluator');
+            }
+          })
+          .catch(err => {
+            console.error('[Crucix] Telegram alert error:', err.message);
+          });
       }
       if (discordAlerter.isConfigured) {
         discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
@@ -665,7 +674,8 @@ async function CheckDebateCycle(context) {
       openAccountOrders,
       remaining,
       stringifiedOrders24h,
-      openPositionCount
+      openPositionCount,
+      lastGeopoliticalSummary
   );
 
   console.log(`[SCOUT] ${result}`);
