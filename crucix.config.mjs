@@ -85,10 +85,12 @@ redline: {
   },
 
   scout: {
-    apiKey:        process.env.SCOUT_API_KEY        || null,
-    model:         process.env.SCOUT_LLM_MODEL      || null,
-    fallbackModel: process.env.SCOUT_FALLBACK_MODEL || 'gemini-2.5-flash',
-    baseUrl:       process.env.GEMINI_BASE_URL      || null,
+    apiKey:           process.env.SCOUT_API_KEY          || null,
+    model:            process.env.SCOUT_LLM_MODEL        || null,
+    fallbackModel:    process.env.SCOUT_FALLBACK_MODEL   || 'gemini-2.5-flash-lite',
+    fallbackApiKey:   process.env.SCOUT_FALLBACK_API_KEY || null, // separate quota pool for fallback model
+    fallbackDelayMs:  parseInt(process.env.SCOUT_FALLBACK_DELAY_MS || '30000', 10), // wait before same-API retry
+    baseUrl:          process.env.GEMINI_BASE_URL        || null,
   },
 
   theta: {
