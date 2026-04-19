@@ -741,7 +741,7 @@ async function CheckDebateCycle(context) {
         let scribeRes;
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 2048 }, true);
+            scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 6000 }, true);
             break;
           } catch (err) {
             const is429 = err.message?.includes('429') || err.message?.includes('quota');
