@@ -50,17 +50,67 @@ let sweepInProgress = false;
 let currentContext = null;
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 
-// Trims a debate transcript for Scribe — each turn capped at maxChars to stay
-// within Gemini's token budget. Scribe is told to summarise, not quote verbatim,
-// so truncating individual turns doesn't lose analytical value.
-function compactTranscript(transcript, maxCharsPerTurn = 800) {
+// Extracts only the structured labeled fields from Scout's briefing output.
+// Gives the Scribe all analytical data in ~400 chars instead of 1500+,
+// without blindly slicing mid-sentence.
+function extractScoutSummary(raw) {
+  const fields = [
+    'Ticker', 'Horizon', 'Play Type', 'Signal Score', 'Congressional Signal',
+    'Rotation_Target', 'Trigger', 'The Data', 'The Story', "Scout's Note", 'Compliance',
+  ];
+  const lines = [];
+
+  const target = raw.match(/PRIMARY_TARGET:\s*([A-Z]{1,5})/);
+  const vix    = raw.match(/VIX:\s*([\d.]+|N\/A)/);
+  if (target) lines.push(`Target: ${target[1]}`);
+  if (vix)    lines.push(`VIX: ${vix[1]}`);
+
+  for (const f of fields) {
+    const escaped = f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\*{0,2}${escaped}[:\\*]{1,3}\\s*(.+)`, 'i');
+    const m  = raw.match(re);
+    if (m && !lines.some(l => l.startsWith(f))) {
+      lines.push(`${f}: ${m[1].trim().replace(/\*\*/g, '')}`);
+    }
+  }
+
+  // Fall back to char-slice if extraction yielded too little (e.g. QUIET output)
+  return lines.length >= 3
+    ? `[SCOUT BRIEFING]\n${lines.join('\n')}`
+    : raw.slice(0, 700) + (raw.length > 700 ? '…' : '');
+}
+
+// Trims a debate transcript for Scribe with role-aware limits.
+//   Theta, Gregor — NEVER truncated (bear case, Logic block, VERDICT JSON must be verbatim)
+//   Phi bull thesis — 1500 chars (generous; thesis can be condensed)
+//   user/Scout turn — smart field extraction instead of char-slice
+//   Phi selection turn ("Selection: TICKER") — dropped entirely (mechanical noise)
+const TRANSCRIPT_CAPS = {
+  Theta:  Infinity,  // 3-5 bullets + verdict — must be complete
+  Gregor: Infinity,  // Logic block + VERDICT JSON — must be verbatim
+  Phi:    1500,      // bull thesis
+  default: 900,
+};
+function compactTranscript(transcript) {
   return (transcript || [])
     .filter(m => m.role !== 'system')
+    .filter(m => {
+      // Drop Phi's mechanical ticker-selection turn — adds zero analytical value for Scribe
+      const content = String(m.content || '').trim();
+      return !(m.name === 'Phi' && /^Selection:\s*[A-Z]{1,5}$/i.test(content));
+    })
     .map(m => {
-      const label   = m.name || m.role.toUpperCase();
+      const label   = m.name || m.role;
       const content = String(m.content || '');
-      const trimmed = content.length > maxCharsPerTurn
-        ? content.slice(0, maxCharsPerTurn) + '…[truncated for brevity]'
+
+      // Scout context: extract structured fields instead of blind truncation
+      if (label === 'user') {
+        return `Scout Briefing:\n${extractScoutSummary(content)}`;
+      }
+
+      const cap     = TRANSCRIPT_CAPS[label] ?? TRANSCRIPT_CAPS.default;
+      const trimmed = content.length > cap
+        ? content.slice(0, cap) + '…[truncated for brevity]'
         : content;
       return `${label}: ${trimmed}`;
     })
