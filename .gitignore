@@ -47,3 +47,4 @@ MAINTAINER_DECISIONS.local.md
 dashboard/public/vercel.json
 
 .package-lock.json
+.reports/
