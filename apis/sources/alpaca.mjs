@@ -68,7 +68,7 @@ export async function getHistoricalTechnicals(symbol, timeframe = '5Min', limit 
       latestClose,
       momentum: momentum.toFixed(2),
       rsi: rsi !== null ? rsi : null,
-      bars: bars.slice(0, 5), // Return last few bars for context
+      bars, // full bar array — callers slice as needed
     };
   } catch (error) {
     console.error(`[REDLINE] Bar Fetch Error for ${symbol}:`, error);

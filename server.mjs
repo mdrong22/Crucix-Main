@@ -709,15 +709,6 @@ async function CheckDebateCycle(context) {
   if (isRestricted) {
       console.warn("[REDLINE] 🛡️ PDT PROTECTION ACTIVE: Bot is restricted to Overnight Holds.");
   }
-  // Hard buying power gate — if there's not enough cash to place even a minimum order,
-  // stand down immediately. Don't waste a full council cycle or Scout tokens.
-  const MIN_BUYING_POWER = 10; // USD — below this, no new positions are viable
-  const bpNum = parseFloat(buyingPower) || 0;
-  if (bpNum < MIN_BUYING_POWER) {
-    console.warn(`[REDLINE] 🛑 Insufficient buying power ($${bpNum.toFixed(2)}) — minimum is $${MIN_BUYING_POWER}. Standing down.`);
-    return;
-  }
-
   const lastDecision = getLastDecision();
   console.log(`[REDLINE] Last decision → Ticker: ${lastDecision?.ticker || 'None'} | Trigger: ${lastDecision?.trigger || 'None'} | Date: ${lastDecision?.date || 'None'}`);
 
