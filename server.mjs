@@ -55,8 +55,11 @@ let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from aler
 // without blindly slicing mid-sentence.
 function extractScoutSummary(raw) {
   const fields = [
+    // ESCALATING fields
     'Ticker', 'Horizon', 'Play Type', 'Signal Score', 'Congressional Signal',
     'Rotation_Target', 'Trigger', 'The Data', 'The Story', "Scout's Note", 'Compliance',
+    // DEFENSIVE fields
+    'Threat', 'Urgency', 'Exit_Before', 'Thesis_Expiry',
   ];
   const lines = [];
 
@@ -734,6 +737,45 @@ async function CheckDebateCycle(context) {
   // SCOUT "QUIET" CHECK
   if (result.toUpperCase().includes("QUIET")) {
       console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
+      return;
+  }
+
+  // SCOUT "DEFENSIVE" CHECK — held position threatened, route to exit debate
+  if (result.toUpperCase().includes("STATUS: DEFENSIVE")) {
+      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE — portfolio threat detected. Routing to exit debate...`);
+      const defensiveBriefing = [
+          result,
+          ``,
+          `⚠ DEFENSIVE MODE: Scout has identified a held position facing imminent downside.`,
+          `Council objective: determine whether to EXIT before the threat materialises.`,
+          `Phi argues HOLD (why the thesis survives or threat is wrong). Theta argues EXIT (why the threat is real and imminent).`,
+          `Gregor: default bias is SELL — exit before the market prices it in. Hold only if Phi provides a concrete counter to the specific threat.`,
+      ].join('\n');
+
+      const defResult  = await debate.beginDebate(defensiveBriefing, context, remaining);
+      const defTrades  = Array.isArray(defResult) ? defResult : [defResult];
+      const defActions = defTrades.filter(t => t && t.action && t.action !== 'WAIT');
+
+      if (defActions.length === 0) {
+          console.log(`[REDLINE] 🛡 Defensive debate returned WAIT — holding position.`);
+          return;
+      }
+
+      for (const trade of defActions) {
+          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+              console.error(`[CRITICAL] CIRCUIT BREAKER: Defensive ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
+              continue;
+          }
+          console.log(`[REDLINE] 🛡 Defensive ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'}`);
+          const orderRes = await snapTrade.PlaceOrder(trade);
+          if (!orderRes) { console.error(`[REDLINE] ❌ Defensive order failed for ${trade.symbol}.`); continue; }
+          console.log(`[REDLINE] 🛡 Defensive order executed ✅: ${trade.symbol}`);
+          telegramAlerter.sendTradeAlert(trade);
+          try {
+              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
+              logDecisions([trade], result, liveVix, remaining);
+          } catch (err) { console.error('[DecisionLogger] Failed to log defensive trade:', err.message); }
+      }
       return;
   }
 
