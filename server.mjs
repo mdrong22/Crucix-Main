@@ -742,7 +742,10 @@ async function CheckDebateCycle(context) {
 
   // SCOUT "DEFENSIVE" CHECK — held position threatened, route to exit debate
   if (result.toUpperCase().includes("STATUS: DEFENSIVE")) {
-      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE — portfolio threat detected. Routing to exit debate...`);
+      const urgencyMatch = result.match(/Urgency:\s*(IMMEDIATE|SWING|WATCH)/i);
+      const defUrgency   = urgencyMatch?.[1]?.toUpperCase() || 'IMMEDIATE';
+      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE (${defUrgency}) — portfolio threat detected. Routing to exit debate...`);
+
       const defensiveBriefing = [
           result,
           ``,
@@ -750,6 +753,9 @@ async function CheckDebateCycle(context) {
           `Council objective: determine whether to EXIT before the threat materialises.`,
           `Phi argues HOLD (why the thesis survives or threat is wrong). Theta argues EXIT (why the threat is real and imminent).`,
           `Gregor: default bias is SELL — exit before the market prices it in. Hold only if Phi provides a concrete counter to the specific threat.`,
+          `URGENCY: ${defUrgency}. ${defUrgency === 'IMMEDIATE'
+              ? 'Use order_type=Market tif=Day — guaranteed exit, price optimisation is secondary.'
+              : 'Limit@current price acceptable — urgency allows time to work the order.'}`,
       ].join('\n');
 
       const defResult  = await debate.beginDebate(defensiveBriefing, context, remaining);
@@ -766,15 +772,34 @@ async function CheckDebateCycle(context) {
               console.error(`[CRITICAL] CIRCUIT BREAKER: Defensive ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
               continue;
           }
-          console.log(`[REDLINE] 🛡 Defensive ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'}`);
+
+          // IMMEDIATE urgency → force Market order so the exit is guaranteed.
+          // A SELL Limit at current price can sit unfilled if price ticks down before execution.
+          if (defUrgency === 'IMMEDIATE' && trade.action === 'SELL' && trade.order_type === 'Limit') {
+              console.log(`[REDLINE] 🛡 IMMEDIATE urgency — overriding Limit→Market for guaranteed exit on ${trade.symbol}.`);
+              trade.order_type = 'Market';
+              trade.price      = null;
+          }
+
+          console.log(`[REDLINE] 🛡 Defensive ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'} (${trade.order_type})`);
           const orderRes = await snapTrade.PlaceOrder(trade);
           if (!orderRes) { console.error(`[REDLINE] ❌ Defensive order failed for ${trade.symbol}.`); continue; }
           console.log(`[REDLINE] 🛡 Defensive order executed ✅: ${trade.symbol}`);
           telegramAlerter.sendTradeAlert(trade);
+
+          // Log with DEFENSIVE horizon override — extractSignals can't find standard Scout fields here
           try {
               const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
-              logDecisions([trade], result, liveVix, remaining);
+              const threatMatch = result.match(/Threat:\s*(.+)/i);
+              logDecisions([trade], result, liveVix, remaining, {
+                  horizon:     'DEFENSIVE',
+                  trigger:     defUrgency,
+                  signalScore: null,
+              });
           } catch (err) { console.error('[DecisionLogger] Failed to log defensive trade:', err.message); }
+
+          // Scribe post-mortem — same as regular trades
+          await runScribeReport(trade, '🛡 DEFENSIVE');
       }
       return;
   }
@@ -820,35 +845,8 @@ async function CheckDebateCycle(context) {
         console.error('[DecisionLogger] Failed to log executed trade:', err.message);
       }
 
-      // Reporting — compact the transcript first to avoid Gemini 429/409 token errors
-    try {
-        const cleanTranscript = compactTranscript(trade.transcript);
-        console.log(`[SCRIBE] Transcript compacted to ${cleanTranscript.length} chars`);
-        // ACTUAL 2-second pause to clear the RPM bucket from previous council calls
-        console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
-        await new Promise(resolve => setTimeout(resolve, 10000)); 
-        console.log(`[REDLINE] Initializing Scribe...`);
-        // No activateWeb — reduces token pressure and quota usage
-        // Retry up to 2x with 30s backoff on 429 before giving up
-        let scribeRes;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 6000 }, true);
-            break;
-          } catch (err) {
-            const is429 = err.message?.includes('429') || err.message?.includes('quota');
-            if (is429 && attempt < 3) {
-              console.warn(`[SCRIBE] 429 rate limit (attempt ${attempt}/3) — waiting 30s...`);
-              await new Promise(r => setTimeout(r, 30000));
-            } else { throw err; }
-          }
-        }
-        await generateLocalReport(trade.symbol, cleanTranscript, scribeRes.text);
-        console.log(`[SCRIBE] ✅ Report generated for ${trade.symbol}`);
-
-    } catch (e) { 
-        console.log('SCRIBE FAILED: ', e.message);
-    }
+      // Reporting — Scribe post-mortem
+      await runScribeReport(trade);
   }
 }
 // === Startup ===
@@ -935,6 +933,34 @@ async function start() {
  * On startup, checks if today's review has already run; if not, fires immediately.
  * Uses a simple polling interval (every minute) to avoid timezone complexity.
  */
+// ── Scribe post-mortem helper — reused by both ESCALATING and DEFENSIVE branches ──
+async function runScribeReport(trade, label = '') {
+  try {
+    const cleanTranscript = compactTranscript(trade.transcript);
+    console.log(`[SCRIBE] ${label ? label + ' ' : ''}Transcript compacted to ${cleanTranscript.length} chars`);
+    console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    console.log(`[REDLINE] Initializing Scribe...`);
+    let scribeRes;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 6000 }, true);
+        break;
+      } catch (err) {
+        const is429 = err.message?.includes('429') || err.message?.includes('quota');
+        if (is429 && attempt < 3) {
+          console.warn(`[SCRIBE] 429 rate limit (attempt ${attempt}/3) — waiting 30s...`);
+          await new Promise(r => setTimeout(r, 30000));
+        } else { throw err; }
+      }
+    }
+    await generateLocalReport(trade.symbol, cleanTranscript, scribeRes.text);
+    console.log(`[SCRIBE] ✅ Report generated for ${trade.symbol}`);
+  } catch (e) {
+    console.log('SCRIBE FAILED: ', e.message);
+  }
+}
+
 function scheduleReviewMode() {
   // Seed from reviewState.json so restarts don't re-trigger a review that already ran today
   const REVIEW_STATE_PATH = join(ROOT, 'runs', 'reviewState.json');
