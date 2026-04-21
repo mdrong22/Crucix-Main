@@ -742,9 +742,27 @@ async function CheckDebateCycle(context) {
 
   // SCOUT "DEFENSIVE" CHECK — held position threatened, route to exit debate
   if (result.toUpperCase().includes("STATUS: DEFENSIVE")) {
-      const urgencyMatch = result.match(/Urgency:\s*(IMMEDIATE|SWING|WATCH)/i);
-      const defUrgency   = urgencyMatch?.[1]?.toUpperCase() || 'IMMEDIATE';
-      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE (${defUrgency}) — portfolio threat detected. Routing to exit debate...`);
+      const urgencyMatch  = result.match(/Urgency:\s*(IMMEDIATE|SWING|WATCH)/i);
+      const defUrgency    = urgencyMatch?.[1]?.toUpperCase() || 'IMMEDIATE';
+      const defTickerMatch = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
+      const defTicker     = defTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
+      const defThreatMatch = result.match(/Threat:\s*(.+)/i);
+      const defThreat     = defThreatMatch?.[1]?.trim().slice(0, 120) || '(no threat summary)';
+      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE | Ticker: ${defTicker} | Urgency: ${defUrgency}`);
+
+      // WATCH = monitor only — threat is real but not imminent enough to act now.
+      // Debating and potentially executing on a WATCH signal wastes a trade and ignores Scout's judgement.
+      if (defUrgency === 'WATCH') {
+          console.log(`[REDLINE] 🛡 DEFENSIVE WATCH — no debate triggered. Alerting and standing by.`);
+          telegramAlerter.sendMessage?.(
+              `🛡 *DEFENSIVE WATCH — ${defTicker}*\n${defThreat}…\n_Scout flagged a threat but recommends holding. No order placed._`
+          );
+          return;
+      }
+
+      // SWING = threat is building, debate with HOLD bias — Phi must make a concrete case to hold.
+      // IMMEDIATE = exit debate with EXIT bias — default to SELL unless Phi has a hard counter.
+      console.log(`[REDLINE] 🛡 DEFENSIVE ${defUrgency} — routing to exit debate...`);
 
       const defensiveBriefing = [
           result,
