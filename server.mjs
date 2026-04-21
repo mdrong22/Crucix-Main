@@ -203,7 +203,7 @@ if (telegramAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
-      `REDLINE: ${redLineEnabled}`
+      `REDLINE: ${redLineEnabled}`,
       `Dashboard: http://localhost:${config.port}`,
     ].join('\n');
   });
@@ -682,7 +682,7 @@ async function runPortfolio() {
     result = await runPortfolioBrief(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(portfolio), accountOrders )
     return result.text
     } catch(err) {
-      console.error("Failed to get Portfolio Briefing: ", err.message, '\n', (result.text))
+      console.error("Failed to get Portfolio Briefing: ", err.message, '\n', (result?.text ?? '(no result)'))
     }
     finally {
       console.log("[Crucix] Report Created at", new Date().toISOString())
