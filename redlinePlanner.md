@@ -15,13 +15,13 @@ The council architecture — Scout identifies → Phi argues bull → Theta argu
 
 | Dimension | Score | Notes |
 |---|---|---|
-| Signal Intelligence | 8.5/10 | 30-source OSINT stack, congressional clustering, delta memory |
-| Council Architecture | 7/10 | Adversarial debate is sound; Phi upgraded to GPT-OSS-120B fixes prior asymmetry |
-| Execution Safety | 7/10 | Price drift gate, PDT compliance, sells-first sort all solid |
-| Risk Management | 4/10 | No mechanical stop-loss; risk lives in prompts, not code |
-| Adaptive Strategy | 4/10 | No feedback loop — council has no memory of past P&L |
-| Infrastructure | 7/10 | safeFetch, FMP caching, SSE dashboard, Telegram two-way commands |
-| **Overall** | **6.5/10** | Signal ceiling is high; feedback loop and mechanical risk are the critical gaps |
+| Signal Intelligence | 9/10 | 30-source OSINT stack, congressional clustering, delta memory, INTRADAY gap/earnings/breakout signals added |
+| Council Architecture | 8/10 | Adversarial debate sound; thresholds tuned; TRADE AROUND + DEFENSIVE urgency gating added |
+| Execution Safety | 8/10 | Price drift gate, PDT compliance, sells-first sort, live price enrichment on DEFENSIVE path, durable asset protection |
+| Risk Management | 6/10 | Mechanical stop-loss watcher live; TRADE AROUND prevents panic-selling durable assets; cost basis now visible to all agents |
+| Adaptive Strategy | 7/10 | Self-calibration feedback loop live; lastReview.json injected into Scout + Gregor; performance-weighted horizon scoring |
+| Infrastructure | 8/10 | safeFetch, FMP caching, SSE dashboard, Telegram two-way, Scribe reports for all execution paths, runScribeReport helper |
+| **Overall** | **B+ (7.5/10)** | A-tier architecture and signal stack; gaps: single-target debate, ETF candle data, ~30s LLM latency |
 
 ---
 
@@ -41,6 +41,47 @@ The 10-minute sweep cycle is too slow for INTRADAY horizon trades during fast-mo
 
 ### 3.5 No Structured P&L Attribution
 There is no system connecting a past decision (Gregor bought NVDA at $X on signal Y at horizon Z) to its outcome. Without attribution, it is impossible to determine whether the signal stack is generating alpha or whether wins are random.
+
+---
+
+## 3b. Resolved Weaknesses (Session Updates)
+
+The following weaknesses from the original assessment have been addressed:
+
+**Feedback Loop (was CRITICAL)** — Now implemented. `reviewCouncil.mjs` runs daily at 4:30 PM ET, computes win rates by horizon/signal, writes `lastReview.json`, and injects a compact performance context block into Scout and Gregor prompts. Scout uses the data to self-calibrate: horizons with WR < 45% get a scoring penalty; horizons with WR ≥ 60% get a bonus. Congressional cluster signals at 83% win rate get prioritized automatically.
+
+**Portfolio Defense — Durable Asset Panic Selling (new, CRITICAL)** — System was exiting ETFs and commodities (SLV, GLD, ITA, SPY, etc.) at a loss via market order. These assets always recover; dumping them locks in the loss and misses the bounce. Fixed via TRADE AROUND mode (see Section 3c).
+
+**DEFENSIVE urgency over-triggering (new)** — WATCH-level threats were launching the full bull/bear debate and sometimes exiting positions. Fixed: WATCH = Telegram alert only, no order; SWING = debate with HOLD bias; IMMEDIATE = debate with EXIT bias + Market order override.
+
+**Live price hallucination on DEFENSIVE path (new)** — Scout's DEFENSIVE output had no candle data for ETFs, so Gregor used stale training-data prices (e.g. ITA at $223 when actual price was $214.77). Fixed: DEFENSIVE path now calls `_enrichWithLivePrice()` to patch current price into the briefing before sending to council.
+
+**Scribe reports only on ESCALATING path (new)** — DEFENSIVE and TRADE AROUND executions were generating no Scribe narrative. Fixed: extracted `runScribeReport(trade, label)` helper called from all three execution branches.
+
+**Cost basis invisible to council (new)** — `stringifyPortfolio` showed only current price and P&L%. Agents couldn't compute breakeven. Fixed: portfolio now includes `cost=X` and computed dollar P&L so every agent knows the breakeven without guessing.
+
+**Scout going QUIET too often / Theta over-blocking (new)** — Pure INTRADAY technical setups could only score 4 points max under old signals. Fixed: added INTRADAY-specific signals (+3 for pre-market gap >2% on volume, +3 for earnings day momentum, +2 for confirmed breakout). CATALYST URGENCY threshold lowered from ≥7 to ≥6 when catalyst fires today/tomorrow. Theta REJECT threshold lowered from score<7 to score<6; WAIT threshold from score<8 to score<7.
+
+**Gregor defaulting to WAIT without justification (new)** — WAIT verdicts had no cost. Fixed: OPPORTUNITY COST rule enforces that WAIT is only valid if (a) price >1.5×ATR above S1, (b) PDT=0 for INTRADAY, or (c) open order exists. All other WAITs require a NEXT_TRIGGER field; unjustified WAITs are treated as execution failures.
+
+**DecisionLogger logging UNKNOWN for DEFENSIVE trades (new)** — Fixed: `logDecisions()` now accepts a `signalOverrides` param allowing DEFENSIVE/TRADE AROUND branches to inject `{ horizon: 'DEFENSIVE', trigger: urgency }` directly.
+
+---
+
+## 3c. TRADE AROUND Mode (New — Durable Asset Defense)
+
+**Concept:** Durable assets (ETFs, commodities) cycle but always recover. The correct response to a drawdown on SLV, GLD, ITA, SPY, etc. is not a market exit — it is to place a GTC SELL at breakeven or R1, collect the bounce, then re-enter at a lower price to reduce the average cost.
+
+**Durable Assets List (from `crucix.config.mjs`):**
+Precious metals: SLV, GLD, GDX, GDXJ, IAU, SIVR, PPLT | Energy: USO, UNG, XLE, XOP, OIH | Broad market: SPY, QQQ, IWM, DIA, VOO, VTI, VEA, VWO | Sector ETFs: XLF, XLK, XLV, XLP, XLU, XLI, XLB, XLRE | Defense: ITA, XAR, PPA | Bonds: TLT, HYG, LQD, SHY, IEF, BND
+
+**Two scenarios Scout can trigger:**
+- `UNDERWATER` — position is in drawdown; goal is GTC SELL at breakeven/R1 to exit flat, then re-enter lower to reduce cost basis.
+- `PROFIT_TAKE` — position is up >15%; goal is GTC SELL at current R1 to lock in gain.
+
+**Hard enforcement in `server.mjs`:** The TRADE AROUND routing block overwrites `order_type=Limit` and `time_in_force=GTC` regardless of what Gregor outputs. No market orders on durable assets. The Telegram notification includes both the sell target and the re-entry target so the user knows the full plan.
+
+**Output priority (Scout):** TRADE AROUND > DEFENSIVE > ESCALATING > QUIET. Scout scans the full portfolio for durable-asset UNDERWATER/PROFIT_TAKE opportunities on every sweep, not just when a threat is detected.
 
 ---
 
@@ -222,6 +263,34 @@ INTRADAY below 50% win rate — reduce sizing to minimum tier until rate recover
 
 ---
 
+## 6b. Signal Scoring Reference (Current)
+
+**Base signals:**
+- Congressional cluster (same ticker, 2+ members): +4
+- VIX elevated (>20): +1 | VIX high (>28): +2 | VIX extreme (>35): +3
+- OSINT news score ≥ 2: +1 | ≥ 4: +2
+- Defense contract match: +2
+- Supply chain stress (GSCPI >1.5): +1
+- Commodity / energy event: +1
+- Geopolitical escalation (ACLED/GDELT): +1
+
+**INTRADAY-specific signals (new):**
+- Pre-market gap >2% on volume above average: +3 ("institutional accumulation")
+- Earnings day momentum (beat + guidance raise): +3
+- Technical breakout confirmed on volume: +2
+- Catalyst fires today or tomorrow (CATALYST URGENCY): escalate at score ≥6 (not 7)
+
+**Position cap modifier:** 0–2 open positions → escalate at ≥6 pts; 3–4 open → ≥7; 5+ open → ≥8
+
+**Performance modifier (from lastReview.json):** Horizon WR ≥ 60% → threshold –1; Horizon WR < 45% → threshold +1. Applied before final escalation check.
+
+**Theta verdict thresholds (current):**
+- REJECT hard-blocks only at score < 6 (down from 7)
+- WAIT hard-blocks only at score < 7 (down from 8)
+- PROCEED WITH CAUTION is the expected outcome on a well-set-up trade when stop is defined and R/R ≥ 1.5:1
+
+---
+
 ## 7. What This Does Not Solve
 
 These gaps require separate work and are noted here to avoid scope creep during the feedback loop implementation.
@@ -229,6 +298,20 @@ These gaps require separate work and are noted here to avoid scope creep during 
 **Mechanical Stop-Loss** remains unaddressed. The feedback loop teaches the council what worked historically but does not protect open positions between sweeps. A mechanical stop-loss module should run on its own interval (e.g., every 2 minutes), independent of the LLM cycle, checking current prices against logged entry prices and a configurable stop threshold. This is a code problem, not a prompt problem, and should be treated as a separate workstream after the feedback loop is stable.
 
 **Single-Target Debate** remains. The Review data will show *which signals predicted wins* but the debate still evaluates one ticker at a time. Comparative multi-ticker evaluation would require restructuring `beginDebate()` significantly and is a future enhancement.
+
+---
+
+## 7b. Known Limitations (Current)
+
+**ETF candle data gap:** Yahoo Finance candle endpoints don't reliably return OHLCV data for ETFs in the same format as equities. Scout's live price enrichment on the DEFENSIVE path patches the current quote price but has no RSI, ATR, or S1/R1 levels for ETFs. Gregor must rely on Scout's computed levels from the briefing context. Workaround: Scout outputs a TRADE AROUND rather than DEFENSIVE for durable ETFs, which avoids needing candle-derived levels.
+
+**LLM latency (~30s per sweep):** The council runs 4 LLM calls sequentially (Scout → Phi → Theta → Gregor). With Groq as the primary provider, each call is ~5–8s. Total sweep-to-order latency is ~25–35s. On fast-moving INTRADAY setups (earnings, gap days), significant price drift can occur between Scout's signal and Gregor's order. Mitigation: 2% price drift gate at order time; Market order override for IMMEDIATE urgency.
+
+**Training data price anchoring:** LLMs trained on historical data may "remember" old price levels for well-known tickers (e.g. a model trained in late 2024 may anchor AAPL at $180). Live price enrichment patches Scout's briefing with current quote, but if enrichment fails or the ticker has no candle data, agents may hallucinate stale prices. Mitigation: portfolio `avg_cost` and live price always visible in agent prompts; explicit instruction to agents to use only numbers from the briefing.
+
+**Single-target debate:** Council debates one ticker per sweep. No comparative multi-ticker scoring. A stronger opportunity may exist in the portfolio or universe that isn't evaluated. Planned future enhancement: Scout ranks top 3 signals, Phi/Theta debate all three with comparative R/R before Gregor picks one.
+
+**PDT compliance is mechanical, not strategic:** The system tracks remaining day trades but does not factor them into INTRADAY vs SWING horizon selection. At PDT=1, the system will still generate INTRADAY signals; Gregor must manually respect the limit. Future: PDT=1 should automatically shift INTRADAY signals to SWING horizon in Scout.
 
 ---
 
@@ -249,6 +332,21 @@ These gaps require separate work and are noted here to avoid scope creep during 
 | `lib/llm/council/scout.mjs` | ✅ Complete | SECTION P injected — performance context + horizon calibration |
 | `lib/llm/council/omega.mjs` | ✅ Complete | Sizing modifier block injected into Gregor's user-turn message |
 | `lib/alerts/stopLossWatcher.mjs` | ✅ Complete | Mechanical stop-loss, trailing stop, INTRADAY EOD — no LLM |
+| `crucix.config.mjs` — durableAssets | ✅ Complete | 35+ ETFs/commodities that trigger TRADE AROUND instead of DEFENSIVE |
+| `lib/llm/council/scout.mjs` — TRADE AROUND output | ✅ Complete | UNDERWATER/PROFIT_TAKE scan; durable-asset DEFENSIVE → TRADE AROUND routing |
+| `lib/llm/council/scout.mjs` — DEFENSIVE live price | ✅ Complete | `_enrichWithLivePrice()` called on DEFENSIVE path; prevents price hallucination |
+| `lib/llm/council/scout.mjs` — DEFENSIVE urgency | ✅ Complete | WATCH/SWING/IMMEDIATE urgency levels defined and enforced in server.mjs |
+| `lib/llm/council/scout.mjs` — INTRADAY scoring | ✅ Complete | Gap +3, earnings day +3, breakout +2, CATALYST URGENCY at ≥6 |
+| `lib/llm/council/scout.mjs` — buildScoutPerformanceContext | ✅ Complete | Compressed to single compact line; strips decorative borders |
+| `lib/llm/council/omega.mjs` — OPPORTUNITY COST | ✅ Complete | WAIT only valid for 3 specific conditions; all others require NEXT_TRIGGER |
+| `lib/llm/council/phi.mjs` — SHORT-TERM ALPHA | ✅ Complete | Gap/earnings/breakout/catalyst-window citation templates added |
+| `lib/llm/council/theta.mjs` — VERDICT DEFAULTS | ✅ Complete | PROCEED WITH CAUTION as default; REJECT/WAIT require justification |
+| `lib/alerts/debate.mjs` — Theta thresholds | ✅ Complete | REJECT at score<6 (was 7); WAIT at score<7 (was 8) |
+| `lib/llm/council/utils/decisionLogger.mjs` — signalOverrides | ✅ Complete | Allows DEFENSIVE/TRADE AROUND to inject horizon and trigger directly |
+| `lib/llm/council/utils/cleaner.mjs` — stringifyPortfolio | ✅ Complete | Now includes avg_cost and computed dollar P&L for all agents |
+| `server.mjs` — runScribeReport helper | ✅ Complete | Extracted; called from ESCALATING, DEFENSIVE, and TRADE AROUND branches |
+| `server.mjs` — TRADE AROUND routing block | ✅ Complete | Hard-enforces Limit/GTC; sends Telegram with sell + re-entry targets |
+| `server.mjs` — DEFENSIVE urgency gating | ✅ Complete | WATCH=alert only; SWING=debate; IMMEDIATE=Market order override |
 
 ---
 
@@ -259,3 +357,16 @@ These gaps require separate work and are noted here to avoid scope creep during 
 3. ✅ `reviewCouncil.mjs` — compute structured stats from resolved decisions, write `lastReview.json`
 4. ✅ Inject `lastReview.json` into Scout and Gregor prompts
 5. ✅ `stopLossWatcher.mjs` — independent mechanical exit layer, polls every 90s
+6. ✅ TRADE AROUND mode — GTC SELL at breakeven/R1 for durable ETFs/commodities; re-entry target in Telegram
+7. ✅ DEFENSIVE urgency gating — WATCH/SWING/IMMEDIATE routing; live price enrichment on DEFENSIVE path
+8. ✅ Signal scoring upgrades — INTRADAY gap/earnings/breakout signals; CATALYST URGENCY; Theta threshold tuning
+9. ✅ OPPORTUNITY COST rule — Gregor WAIT requires NEXT_TRIGGER unless one of 3 specific conditions is met
+10. ✅ Cost basis visibility — `stringifyPortfolio` now includes avg_cost + dollar P&L for all agents
+11. ✅ Scribe for all paths — `runScribeReport` helper called from ESCALATING, DEFENSIVE, and TRADE AROUND branches
+12. ✅ signalOverrides in `logDecisions` — DEFENSIVE/TRADE AROUND inject correct horizon into decision log
+
+**Planned (not yet built):**
+- Multi-ticker comparative debate — Scout ranks top 3, council evaluates all before Gregor selects
+- PDT-aware horizon shifting — PDT=1 auto-shifts INTRADAY signals to SWING in Scout
+- ETF candle data source — fill the S1/R1/ATR gap for durable ETFs on DEFENSIVE path
+- Mechanical position sizing with portfolio heat map — cap total risk exposure independent of Gregor prompt

@@ -778,7 +778,7 @@ async function CheckDebateCycle(context) {
 
       if (taActions.length === 0) {
           console.log(`[REDLINE] 🔄 TRADE AROUND debate returned WAIT — no order placed for ${taTicker}.`);
-          telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell_Target $${sellTarget} is reachable. Monitoring.`);
+          telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell Target $${sellTarget} is reachable. Monitoring.`);
           return;
       }
 
@@ -791,7 +791,10 @@ async function CheckDebateCycle(context) {
           if (trade.action === 'SELL') {
               trade.order_type   = 'Limit';
               trade.time_in_force = 'GTC';
-              if (!trade.price && sellTarget) trade.price = sellTarget;
+              // Always use Scout's sell target — Gregor's no-candle pricing rules
+              // (e.g. "current + 2%") are irrelevant here. Scout already computed
+              // the optimal exit level from avg_cost and technical context.
+              if (sellTarget) trade.price = sellTarget;
           }
           console.log(`[REDLINE] 🔄 Placing TRADE AROUND GTC SELL: ${trade.symbol} @ $${trade.price}`);
           const orderRes = await snapTrade.PlaceOrder(trade);
