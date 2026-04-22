@@ -45,6 +45,25 @@ export default {
 redline: {
   enabled: true,
 
+  // ── Durable Assets — instruments that track structural value and always recover ──
+  // Positions in these assets facing temporary headwinds are routed to TRADE AROUND
+  // (GTC sell at breakeven/R1, re-entry at S1) rather than a panic market exit.
+  // Add any ETF or commodity that you'd always want to re-own at a lower price.
+  durableAssets: [
+    // Precious metals
+    'SLV', 'GLD', 'GDX', 'GDXJ', 'IAU', 'SIVR', 'PPLT',
+    // Energy
+    'USO', 'UNG', 'XLE', 'XOP', 'OIH',
+    // Broad market indices
+    'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'VEA', 'VWO',
+    // Sector ETFs
+    'XLF', 'XLK', 'XLV', 'XLP', 'XLU', 'XLI', 'XLB', 'XLRE',
+    // Defense ETFs
+    'ITA', 'XAR', 'PPA',
+    // Fixed income
+    'TLT', 'HYG', 'LQD', 'SHY', 'IEF', 'BND',
+  ],
+
   // ── Free-tier provider pool (shared across Phi, Theta, Gregor) ──────────
   // Sign up at each provider and add the keys to .env.
   // All four are OpenAI-compatible — drop-in replacements for Groq.

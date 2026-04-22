@@ -167,7 +167,11 @@ const redLineEnabled = config.redline.enabled
 
 // Inject shared provider pool into each agent so fallback chains work
 const _providers = config.redline.providers || {};
-const scout = new ScoutLLM(config.redline.scout, getLiveQuote, groqIdeasFallback);
+const scout = new ScoutLLM(
+  { ...config.redline.scout, durableAssets: config.redline.durableAssets || [] },
+  getLiveQuote,
+  groqIdeasFallback
+);
 const bull  = new PhiLLM({ ...(config.redline.phi   || {}), providers: _providers });
 const bear  = new ThetaLLM({ ...(config.redline.theta || {}), providers: _providers });
 const omega = new GregorLLM({ ...(config.redline.omega || {}), providers: _providers });
@@ -737,6 +741,76 @@ async function CheckDebateCycle(context) {
   // SCOUT "QUIET" CHECK
   if (result.toUpperCase().includes("QUIET")) {
       console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
+      return;
+  }
+
+  // SCOUT "TRADE AROUND" CHECK — durable asset with temporary headwind or profit-taking opportunity.
+  // Instead of selling at a loss, place a GTC SELL at breakeven/R1 and re-enter lower next sweep.
+  if (result.toUpperCase().includes("STATUS: TRADE AROUND")) {
+      const taTickerMatch  = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
+      const taTicker       = taTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
+      const sellTargetMatch = result.match(/Sell_Target:\s*\$?([\d.]+)/i);
+      const reentryMatch   = result.match(/Reentry_Target:\s*\$?([\d.]+)/i);
+      const scenarioMatch  = result.match(/Scenario:\s*(UNDERWATER|PROFIT.TAKE)/i);
+      const sellTarget     = sellTargetMatch  ? parseFloat(sellTargetMatch[1])  : null;
+      const reentryTarget  = reentryMatch     ? parseFloat(reentryMatch[1])     : null;
+      const scenario       = scenarioMatch?.[1]?.toUpperCase().replace(/\s/, '_') || 'UNDERWATER';
+
+      console.log(`[REDLINE] 🔄 TRADE AROUND — ${taTicker} | Scenario: ${scenario} | Sell: $${sellTarget ?? '?'} | Reentry: $${reentryTarget ?? '?'}`);
+
+      const tradeAroundBriefing = [
+          result,
+          ``,
+          `⚡ TRADE AROUND MODE: Scout identified a durable asset for position management.`,
+          `Scenario: ${scenario === 'PROFIT_TAKE' ? 'Lock in gains and re-enter lower.' : 'Exit at breakeven or better — do NOT sell at current loss.'}`,
+          `Phi: confirm Sell_Target ($${sellTarget}) is reachable given current momentum and technicals.`,
+          `Theta: confirm Sell_Target is realistic — flag if momentum makes it unreachable within the stated horizon.`,
+          `Gregor: place a GTC SELL Limit at $${sellTarget ?? 'Scout stated target'}.`,
+          `  - order_type MUST be Limit (not Market) — we are working the order, not dumping.`,
+          `  - time_in_force MUST be GTC — this may take 1-3 sessions to fill.`,
+          `  - price MUST be $${sellTarget ?? 'Sell_Target from Scout output'}.`,
+          `  - DO NOT place a re-entry BUY now — re-entry at $${reentryTarget ?? 'Reentry_Target'} will be handled in a future sweep after the SELL fills.`,
+      ].join('\n');
+
+      const taResult  = await debate.beginDebate(tradeAroundBriefing, context, remaining);
+      const taTrades  = Array.isArray(taResult) ? taResult : [taResult];
+      const taActions = taTrades.filter(t => t && t.action && t.action !== 'WAIT');
+
+      if (taActions.length === 0) {
+          console.log(`[REDLINE] 🔄 TRADE AROUND debate returned WAIT — no order placed for ${taTicker}.`);
+          telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell_Target $${sellTarget} is reachable. Monitoring.`);
+          return;
+      }
+
+      for (const trade of taActions) {
+          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+              console.error(`[CRITICAL] CIRCUIT BREAKER: TRADE AROUND ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
+              continue;
+          }
+          // Hard-enforce GTC Limit — TRADE AROUND is never a market dump
+          if (trade.action === 'SELL') {
+              trade.order_type   = 'Limit';
+              trade.time_in_force = 'GTC';
+              if (!trade.price && sellTarget) trade.price = sellTarget;
+          }
+          console.log(`[REDLINE] 🔄 Placing TRADE AROUND GTC SELL: ${trade.symbol} @ $${trade.price}`);
+          const orderRes = await snapTrade.PlaceOrder(trade);
+          if (!orderRes) { console.error(`[REDLINE] ❌ TRADE AROUND order failed for ${trade.symbol}.`); continue; }
+          console.log(`[REDLINE] 🔄 TRADE AROUND GTC SELL placed ✅: ${trade.symbol} @ $${trade.price} | Re-entry target: $${reentryTarget ?? 'TBD'}`);
+          telegramAlerter.sendMessage?.(
+              `🔄 *TRADE AROUND — ${trade.symbol}*\nGTC SELL @ $${trade.price} placed.\nRe-entry target: $${reentryTarget ?? 'TBD'} (next sweep after fill).`
+          );
+          telegramAlerter.sendTradeAlert(trade);
+          try {
+              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
+              logDecisions([trade], result, liveVix, remaining, {
+                  horizon: 'SWING',
+                  trigger: `TRADE_AROUND_${scenario}@${sellTarget}`,
+                  signalScore: null,
+              });
+          } catch (err) { console.error('[DecisionLogger] Failed to log TRADE AROUND:', err.message); }
+          await runScribeReport(trade, '🔄 TRADE AROUND');
+      }
       return;
   }
 
