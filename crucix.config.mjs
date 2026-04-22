@@ -127,9 +127,15 @@ redline: {
   },
 
   omega: {
-    // Primary chain: SambaNova → Cerebras → NVIDIA NIM → OpenRouter DeepSeek R1
-    // All come from the shared providers block above.
+    // Primary chain: SambaNova → Groq → Cerebras → NVIDIA NIM → OpenRouter DeepSeek R1
+    // Providers block covers SambaNova/Cerebras/NVIDIA/OpenRouter.
+    // Groq shared with Phi — same key, no extra credentials needed.
     // Anthropic kept as absolute last resort (user has premium).
+    groq: {
+      apiKey:  process.env.GROQ_API_KEY   || null,
+      baseUrl: process.env.GROQ_BASE_URL  || null,
+      model:   process.env.OMEGA_GROQ_MODEL || 'llama-3.3-70b-versatile',
+    },
     fallback: {
       apiKey: process.env.ANTHROPIC_API_KEY || null,
       model:  process.env.OMEGA_MODEL       || 'claude-sonnet-4-6',
