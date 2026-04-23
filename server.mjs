@@ -899,6 +899,78 @@ async function CheckDebateCycle(context) {
       return;
   }
 
+  // SCOUT "AVERAGE_DOWN" CHECK — held durable asset at support, thesis intact, adding lowers cost basis
+  if (result.toUpperCase().includes("STATUS: AVERAGE_DOWN")) {
+      const adTickerMatch   = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
+      const adTicker        = adTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
+      const addPriceMatch   = result.match(/Add_Price:\s*\$?([\d.]+)/i);
+      const newAvgCostMatch = result.match(/New_Avg_Cost:\s*\$?([\d.]+)/i);
+      const supportMatch    = result.match(/Support_Level:\s*(.+)/i);
+      const addPrice        = addPriceMatch   ? parseFloat(addPriceMatch[1])   : null;
+      const newAvgCost      = newAvgCostMatch ? parseFloat(newAvgCostMatch[1]) : null;
+      const supportLevel    = supportMatch?.[1]?.trim().slice(0, 60) || '(unknown)';
+
+      console.log(`[REDLINE] 📉 AVERAGE DOWN — ${adTicker} | Add Price: $${addPrice ?? '?'} | New Avg Cost: $${newAvgCost ?? '?'}`);
+
+      const avgDownBriefing = [
+          result,
+          ``,
+          `📉 AVERAGE DOWN MODE: Scout identified a held durable asset at support with intact thesis.`,
+          `Council objective: validate that adding at this price lowers cost basis with acceptable risk.`,
+          `Support: ${supportLevel}`,
+          `Phi: confirm the support level is real and the structural thesis remains intact. Show updated bull case with new avg cost.`,
+          `Theta: confirm a defined stop level exists below support. Flag immediately if S1/S2 is undefined or thesis is structurally broken — REJECT if stop cannot be defined.`,
+          `Gregor: place GTC BUY Limit at $${addPrice ?? 'Add_Price from Scout output'}.`,
+          `  - order_type MUST be Limit — we are adding at support, not chasing at market.`,
+          `  - time_in_force MUST be GTC — support test may take 1-3 sessions to fill.`,
+          `  - price MUST be $${addPrice ?? 'Add_Price'}.`,
+          `  - Size to achieve New_Avg_Cost of $${newAvgCost ?? 'stated in Scout output'}.`,
+          `  - If council cannot confirm support is real or thesis is intact → output WAIT.`,
+      ].join('\n');
+
+      const adResult  = await debate.beginDebate(avgDownBriefing, context, remaining);
+      const adTrades  = Array.isArray(adResult) ? adResult : [adResult];
+      const adActions = adTrades.filter(t => t && t.action && t.action !== 'WAIT');
+
+      if (adActions.length === 0) {
+          console.log(`[REDLINE] 📉 AVERAGE DOWN debate returned WAIT — no order placed for ${adTicker}.`);
+          return;
+      }
+
+      for (const trade of adActions) {
+          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+              console.error(`[CRITICAL] CIRCUIT BREAKER: AVERAGE DOWN ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
+              continue;
+          }
+
+          // Hard-enforce GTC Limit — we are adding at support, not market buying
+          if (trade.action === 'BUY') {
+              trade.order_type    = 'Limit';
+              trade.time_in_force = 'GTC';
+              if (addPrice) trade.price = addPrice;
+          }
+
+          console.log(`[REDLINE] 📉 Placing AVERAGE DOWN GTC BUY: ${trade.symbol} @ $${trade.price}`);
+          const orderRes = await snapTrade.PlaceOrder(trade);
+          if (!orderRes) { console.error(`[REDLINE] ❌ AVERAGE DOWN order failed for ${trade.symbol}.`); continue; }
+          console.log(`[REDLINE] 📉 AVERAGE DOWN GTC BUY placed ✅: ${trade.symbol} @ $${trade.price} | New Avg Cost target: $${newAvgCost ?? 'TBD'}`);
+          telegramAlerter.sendMessage?.(
+              `📉 *AVERAGE DOWN — ${trade.symbol}*\nGTC BUY Limit @ $${trade.price} placed.\nNew avg cost after fill: $${newAvgCost ?? 'TBD'}`
+          );
+          telegramAlerter.sendTradeAlert(trade);
+          try {
+              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
+              logDecisions([trade], result, liveVix, remaining, {
+                  horizon:     'SWING',
+                  trigger:     `AVERAGE_DOWN@${addPrice}`,
+                  signalScore: null,
+              });
+          } catch (err) { console.error('[DecisionLogger] Failed to log AVERAGE DOWN:', err.message); }
+          await runScribeReport(trade, '📉 AVERAGE DOWN');
+      }
+      return;
+  }
+
   // 3. ESCALATE TO COUNCIL
   console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
   let debateResult = await debate.beginDebate(result, context, remaining);
