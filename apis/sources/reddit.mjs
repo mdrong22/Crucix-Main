@@ -10,11 +10,24 @@ import '../utils/env.mjs';
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const SUBREDDITS = [
+  // Geopolitical & macro — existing
   'worldnews',
   'geopolitics',
   'economics',
-  'wallstreetbets',
   'commodities',
+
+  // Financial markets
+  'wallstreetbets',
+  'stocks',
+  'investing',
+  'StockMarket',
+  'options',
+
+  // AI / tech community — first to surface model leaks, hardware news
+  'MachineLearning',
+  'LocalLLaMA',       // open-weight model releases & benchmarks break here first
+  'artificial',
+  'singularity',
 ];
 
 // Get OAuth token using client credentials flow (application-only)

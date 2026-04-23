@@ -50,6 +50,12 @@ import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
 // === Tier 7: Congressional & Insider Trading ===
 import { briefing as congress } from './sources/congress.mjs';
 
+// === Tier 8: Financial & Tech News Intelligence ===
+import { briefing as hackernews } from './sources/hackernews.mjs';
+import { briefing as newsapi }    from './sources/newsapi.mjs';
+import { briefing as sec }        from './sources/sec.mjs';
+import { briefing as finnhub }    from './sources/finnhub.mjs';
+
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 
 export async function runSource(name, fn, ...args) {
@@ -70,7 +76,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 30 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 34 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -117,6 +123,12 @@ export async function fullBriefing() {
 
     // Tier 7: Congressional & Insider Trading
     runSource('Congress', congress),
+
+    // Tier 8: Financial & Tech News Intelligence
+    runSource('HackerNews', hackernews),                          // no key — always active
+    runSource('NewsAPI',    newsapi),                             // NEWS_API_KEY
+    runSource('SEC-EDGAR',  sec),                                 // no key — 8-K + Form 4
+    runSource('Finnhub',    finnhub),                             // FINNHUB_API_KEY
   ];
 
   // Each runSource has its own 30s timeout, so allSettled will resolve

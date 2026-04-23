@@ -27,6 +27,71 @@ import { safeFetch } from '../utils/fetch.mjs';
 const BASE          = 'https://financialmodelingprep.com';
 const LOOKBACK_DAYS = 45;
 
+// ─── Known Insider Traders ────────────────────────────────────────────────────
+// Members of Congress with a documented history of well-timed, committee-adjacent
+// trades — flagged by STOCK Act violations, financial journalism, or academic study.
+//
+// Trades by anyone on this list are surfaced as PRIORITY alerts regardless of
+// cluster size. A single large purchase by a committee chair is higher-conviction
+// than a clustered buy by backbenchers.
+//
+// Key: lowercase first+last (flexible — see matchInsider()).
+// Value: committee access explains WHY the trade may be predictive.
+//
+// Sources: STOCK Act disclosures, Unusual Whales, Capitol Trades, Quiver Quant,
+//          WSJ "Conflicted Congress" series, academic SSRN studies.
+const KNOWN_INSIDERS = new Map([
+  // ── House ─────────────────────────────────────────────────────────────────
+  ['nancy pelosi',         { display: 'Nancy Pelosi',         chamber: 'House',  committee: 'Former Speaker',         notes: 'tech/options; husband Paul trades NVDA, GOOGL, AAPL calls' }],
+  ['austin scott',         { display: 'Austin Scott',         chamber: 'House',  committee: 'Armed Services',         notes: 'aviation/defense contracts; trades align with DoD awards' }],
+  ['dan crenshaw',         { display: 'Dan Crenshaw',         chamber: 'House',  committee: 'Homeland Security',      notes: 'energy sector; Intel committee access' }],
+  ['michael mccaul',       { display: 'Michael McCaul',       chamber: 'House',  committee: 'Foreign Affairs',        notes: 'tech investments; foreign policy = export control flow' }],
+  ['josh gottheimer',      { display: 'Josh Gottheimer',      chamber: 'House',  committee: 'Intelligence',           notes: 'finance/tech; highly active, well-timed entries' }],
+  ['suzan delbene',        { display: 'Suzan DelBene',        chamber: 'House',  committee: 'Ways & Means',           notes: 'former Microsoft exec; tech trades ahead of legislation' }],
+  ['kevin hern',           { display: 'Kevin Hern',           chamber: 'House',  committee: 'Ways & Means/Budget',    notes: 'prolific trader; energy, restaurant, financials' }],
+  ['marjorie taylor greene', { display: 'Marjorie Taylor Greene', chamber: 'House', committee: 'Oversight/Homeland', notes: 'defense, tech, NVDA options' }],
+  ['ro khanna',            { display: 'Ro Khanna',            chamber: 'House',  committee: 'Armed Services',         notes: 'Silicon Valley rep; direct access to tech execs' }],
+  ['virginia foxx',        { display: 'Virginia Foxx',        chamber: 'House',  committee: 'Education',              notes: 'pharma/healthcare trades; HELP committee adjacent' }],
+  ['mark green',           { display: 'Mark Green',           chamber: 'House',  committee: 'Homeland Security',      notes: 'physician background; pharma/biotech timing' }],
+  ['david schweikert',     { display: 'David Schweikert',     chamber: 'House',  committee: 'Ways & Means',           notes: 'high volume; finance/tech/healthcare' }],
+  ['pat fallon',           { display: 'Pat Fallon',           chamber: 'House',  committee: 'Armed Services',         notes: 'defense contracts; Texas energy exposure' }],
+  ['mike garcia',          { display: 'Mike Garcia',          chamber: 'House',  committee: 'Armed Services/Science', notes: 'aerospace background; defense/space plays' }],
+  ['brian mast',           { display: 'Brian Mast',           chamber: 'House',  committee: 'Foreign Affairs',        notes: 'defense adjacent; Israel policy trades' }],
+  ['pete sessions',        { display: 'Pete Sessions',        chamber: 'House',  committee: 'Rules',                  notes: 'rules committee = early bill visibility' }],
+  ['greg murphy',          { display: 'Greg Murphy',          chamber: 'House',  committee: 'Energy & Commerce',      notes: 'physician; biotech/pharma timing' }],
+  ['michael burgess',      { display: 'Michael Burgess',      chamber: 'House',  committee: 'Energy & Commerce',      notes: 'physician; healthcare/pharma' }],
+  ['french hill',          { display: 'French Hill',          chamber: 'House',  committee: 'Financial Services',     notes: 'banking background; finance sector front-running' }],
+  ['bill foster',          { display: 'Bill Foster',          chamber: 'House',  committee: 'Financial Services',     notes: 'physicist; tech/AI/quantum investments' }],
+
+  // ── Senate ────────────────────────────────────────────────────────────────
+  ['tommy tuberville',     { display: 'Tommy Tuberville',     chamber: 'Senate', committee: 'Armed Services',         notes: '132 STOCK Act violations; commodity/defense trades' }],
+  ['shelley moore capito', { display: 'Shelley Moore Capito', chamber: 'Senate', committee: 'Appropriations',         notes: 'energy sector; WV coal→natgas transition plays' }],
+  ['bill hagerty',         { display: 'Bill Hagerty',         chamber: 'Senate', committee: 'Banking/Foreign Relations', notes: 'finance sector; APAC trade policy access' }],
+  ['rand paul',            { display: 'Rand Paul',            chamber: 'Senate', committee: 'Foreign Relations',      notes: 'COVID iShares sale; contrarian + policy-driven' }],
+  ['john hoeven',          { display: 'John Hoeven',          chamber: 'Senate', committee: 'Appropriations',         notes: 'agriculture/energy; ND commodity exposure' }],
+  ['jacky rosen',          { display: 'Jacky Rosen',          chamber: 'Senate', committee: 'Commerce/Science/Tech',  notes: 'AI/tech legislation access; semiconductor policy' }],
+  ['roger marshall',       { display: 'Roger Marshall',       chamber: 'Senate', committee: 'Agriculture/Finance',    notes: 'physician; ag commodities + pharma' }],
+  ['rick scott',           { display: 'Rick Scott',           chamber: 'Senate', committee: 'Armed Services/Finance', notes: 'large portfolio; healthcare/defense' }],
+  ['mark kelly',           { display: 'Mark Kelly',           chamber: 'Senate', committee: 'Armed Services/Aero',    notes: 'aerospace background; space/defense' }],
+  ['john curtis',          { display: 'John Curtis',          chamber: 'Senate', committee: 'Energy/Environment',     notes: 'energy transition plays; formerly active House trader' }],
+]);
+
+// Match a raw member name string against the KNOWN_INSIDERS map.
+// FMP returns names as "First Last" — handles minor variations.
+// Returns the matched Map key (for profile lookup) or null.
+function matchInsider(memberName) {
+  if (!memberName) return null;
+  const lower = memberName.toLowerCase().replace(/[^a-z\s]/g, '').trim();
+  for (const key of KNOWN_INSIDERS.keys()) {
+    // Direct includes check covers "Nancy Pelosi" → "nancy pelosi"
+    if (lower.includes(key) || key.includes(lower)) return key;
+    // Word-by-word: all parts of the key appear in the name (handles middle initials)
+    const parts = key.split(' ');
+    if (parts.length >= 2 && parts.every(p => lower.includes(p))) return key;
+  }
+  return null;
+}
+
 // ─── In-Memory Cache ─────────────────────────────────────────────────────────
 // Keeps FMP API usage well under the 250 calls/day free tier limit.
 
@@ -245,12 +310,71 @@ async function _fetchFresh(key) {
   const senateOk   = senateTrades.length > 0;
   const houseOk    = houseTrades.length  > 0;
 
+  // ── Known-insider pass (runs after every FMP fetch, zero extra API calls) ──
+  // Filter allTrades for members on the curated watchlist.
+  // Each match is a priority alert regardless of cluster size — a single
+  // large purchase by an Armed Services chair outweighs a cluster of backbenchers.
+  const insiderTrades = [];
+  for (const trade of allTrades) {
+    const key = matchInsider(trade.member);
+    if (!key) continue;
+    const profile = KNOWN_INSIDERS.get(key);
+    insiderTrades.push({
+      ...trade,
+      committee: profile?.committee || '',
+      notes:     profile?.notes     || '',
+    });
+  }
+
+  // Group insider trades by member for clean signal output
+  const insiderAlerts = [];
+  const byMember = {};
+  for (const t of insiderTrades) {
+    (byMember[t.member] = byMember[t.member] || []).push(t);
+  }
+  for (const [member, trades] of Object.entries(byMember)) {
+    const profile  = KNOWN_INSIDERS.get(matchInsider(member));
+    const buys     = trades.filter(t => t.type.includes('purchase') || t.type.includes('buy'));
+    const sells    = trades.filter(t => t.type.includes('sale') || t.type.includes('sell'));
+    const tickers  = [...new Set(trades.map(t => t.ticker))].join(', ');
+    const maxAmt   = Math.max(...trades.map(t => t.amount));
+    const tag      = buys.length > sells.length ? 'BUY' : sells.length > buys.length ? 'SELL' : 'MIXED';
+
+    insiderAlerts.push({
+      member,
+      chamber:   trades[0].chamber,
+      committee: profile?.committee || '',
+      notes:     profile?.notes     || '',
+      tickers,
+      tradeCount:  trades.length,
+      buyCount:    buys.length,
+      sellCount:   sells.length,
+      tag,
+      maxAmount:   maxAmt,
+      dateRange:   trades.map(t => t.date).sort().join(' → '),
+      signal: `KNOWN INSIDER [${tag}] ${member} (${profile?.committee || trades[0].chamber}): ` +
+              `${tickers} — ${trades.length} trade(s), largest ~$${(maxAmt/1000).toFixed(0)}k | ${profile?.notes || ''}`,
+    });
+  }
+
+  // Sort: buys first, then by dollar amount
+  insiderAlerts.sort((a, b) => {
+    if (a.tag === 'BUY' && b.tag !== 'BUY') return -1;
+    if (b.tag === 'BUY' && a.tag !== 'BUY') return  1;
+    return b.maxAmount - a.maxAmount;
+  });
+
+  if (insiderAlerts.length > 0) {
+    console.log(`[Congress] 🚨 ${insiderAlerts.length} known-insider trade(s) detected: ${insiderAlerts.map(a => `${a.member} → ${a.tickers}`).join(' | ')}`);
+  }
+
   if (allTrades.length === 0) {
     return {
       status:  'unavailable',
       message: 'FMP returned no valid congressional trade data.',
       houseOk, senateOk,
       topBuys: [], topSells: [], heavyHitters: [],
+      insiderAlerts: [], insiderTrades: [],
       summary: 'Congressional data unavailable this cycle — no valid trades returned.',
     };
   }
@@ -301,7 +425,10 @@ async function _fetchFresh(key) {
     totalDisclosures: allTrades.length,
     lookbackDays:     LOOKBACK_DAYS,
     topBuys, topSells, heavyHitters,
-    byTicker: byTicker.slice(0, 20),
+    byTicker:      byTicker.slice(0, 20),
+    insiderAlerts,                         // priority: known trader watchlist hits
+    insiderTrades,                         // full raw trades for known insiders
+    knownInsiderCount: KNOWN_INSIDERS.size,
     summary,
   };
 }
