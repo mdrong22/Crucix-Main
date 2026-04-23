@@ -778,7 +778,7 @@ async function CheckDebateCycle(context) {
 
       if (taActions.length === 0) {
           console.log(`[REDLINE] 🔄 TRADE AROUND debate returned WAIT — no order placed for ${taTicker}.`);
-          telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell Target $${sellTarget} is reachable. Monitoring.`);
+          //telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell Target $${sellTarget} is reachable. Monitoring.`);
           return;
       }
 

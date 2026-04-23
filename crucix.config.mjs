@@ -132,7 +132,7 @@ redline: {
     // Groq shared with Phi — same key, no extra credentials needed.
     // Anthropic kept as absolute last resort (user has premium).
     groq: {
-      apiKey:  process.env.GROQ_API_KEY   || null,
+      apiKey:  process.env.OMEGA_GROQ_API_KEY   || null,
       baseUrl: process.env.GROQ_BASE_URL  || null,
       model:   process.env.OMEGA_GROQ_MODEL || 'llama-3.3-70b-versatile',
     },
