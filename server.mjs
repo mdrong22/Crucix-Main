@@ -747,29 +747,45 @@ async function CheckDebateCycle(context) {
   // SCOUT "TRADE AROUND" CHECK — durable asset with temporary headwind or profit-taking opportunity.
   // Instead of selling at a loss, place a GTC SELL at breakeven/R1 and re-enter lower next sweep.
   if (result.toUpperCase().includes("STATUS: TRADE AROUND")) {
-      const taTickerMatch  = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
-      const taTicker       = taTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
-      const sellTargetMatch = result.match(/Sell_Target:\s*\$?([\d.]+)/i);
-      const reentryMatch   = result.match(/Reentry_Target:\s*\$?([\d.]+)/i);
-      const scenarioMatch  = result.match(/Scenario:\s*(UNDERWATER|PROFIT.TAKE)/i);
-      const sellTarget     = sellTargetMatch  ? parseFloat(sellTargetMatch[1])  : null;
-      const reentryTarget  = reentryMatch     ? parseFloat(reentryMatch[1])     : null;
-      const scenario       = scenarioMatch?.[1]?.toUpperCase().replace(/\s/, '_') || 'UNDERWATER';
+      const taTickerMatch    = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
+      const taTicker         = taTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
+      const sellTargetMatch  = result.match(/Sell_Target:\s*\$?([\d.]+)/i);
+      const reentryMatch     = result.match(/Reentry_Target:\s*\$?([\d.]+)/i);
+      const unitsToSellMatch = result.match(/Units_To_Sell[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
+      const unitsRemainingMatch = result.match(/Units_Remaining[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
+      const scenarioMatch    = result.match(/Scenario:\s*(UNDERWATER|PARTIAL[_\s]EXIT|PROFIT[_\s]TAKE|BREAKEVEN[_\s]EXIT)/i);
+      const sellTarget       = sellTargetMatch    ? parseFloat(sellTargetMatch[1])    : null;
+      const reentryTarget    = reentryMatch       ? parseFloat(reentryMatch[1])       : null;
+      const unitsToSell      = unitsToSellMatch   ? parseFloat(unitsToSellMatch[1])   : null;
+      const unitsRemaining   = unitsRemainingMatch? parseFloat(unitsRemainingMatch[1]): null;
+      const scenario         = scenarioMatch?.[1]?.toUpperCase().replace(/[\s]/, '_') || 'UNDERWATER';
+      const isPartialExit    = scenario === 'PARTIAL_EXIT';
 
-      console.log(`[REDLINE] 🔄 TRADE AROUND — ${taTicker} | Scenario: ${scenario} | Sell: $${sellTarget ?? '?'} | Reentry: $${reentryTarget ?? '?'}`);
+      const scenarioEmoji = scenario === 'PROFIT_TAKE' ? '💰' : scenario === 'BREAKEVEN_EXIT' ? '🚪' : isPartialExit ? '🎯' : '🔄';
+      console.log(`[REDLINE] ${scenarioEmoji} TRADE AROUND — ${taTicker} | Scenario: ${scenario} | Sell: $${sellTarget ?? '?'}${isPartialExit ? ` | Units: ${unitsToSell ?? '?'} (${unitsRemaining ?? '?'} free-ride remaining)` : ` | Reentry: $${reentryTarget ?? '?'}`}`);
+
+      const scenarioInstruction = isPartialExit
+          ? `PARTIAL EXIT: Sell exactly ${unitsToSell ?? 'Units_To_Sell'} units to recover full original cost basis. The remaining ${unitsRemaining ?? 'Units_Remaining'} units cost $0 — they ride free. Phi: confirm sell price $${sellTarget} is achievable. Theta: confirm this is the right exit size — flag if units math looks wrong. Gregor: SELL exactly ${unitsToSell ?? 'Units_To_Sell'} units at $${sellTarget} GTC Limit. DO NOT sell all units — only the calculated recovery amount.`
+          : scenario === 'PROFIT_TAKE'
+          ? `Lock in gains and re-enter lower. Position is up >15% — don't ride it back to flat.`
+          : scenario === 'BREAKEVEN_EXIT'
+          ? `Original catalyst resolved — full exit at current price to free capital. Phi: confirm thesis is depleted. Theta: confirm no continuation. If either finds intact thesis, output WAIT.`
+          : `Exit at breakeven or better — do NOT sell at current loss.`;
 
       const tradeAroundBriefing = [
           result,
           ``,
-          `⚡ TRADE AROUND MODE: Scout identified a durable asset for position management.`,
-          `Scenario: ${scenario === 'PROFIT_TAKE' ? 'Lock in gains and re-enter lower.' : 'Exit at breakeven or better — do NOT sell at current loss.'}`,
-          `Phi: confirm Sell_Target ($${sellTarget}) is reachable given current momentum and technicals.`,
-          `Theta: confirm Sell_Target is realistic — flag if momentum makes it unreachable within the stated horizon.`,
-          `Gregor: place a GTC SELL Limit at $${sellTarget ?? 'Scout stated target'}.`,
+          `⚡ TRADE AROUND MODE (${scenario}): Scout identified a held position for exit management.`,
+          `Scenario context: ${scenarioInstruction}`,
+          isPartialExit
+              ? `Gregor SELL INSTRUCTION: units = ${unitsToSell ?? 'Units_To_Sell from Scout output'} | price = $${sellTarget ?? 'Sell_Target'} | order_type = Limit | time_in_force = GTC`
+              : `Gregor: place a GTC SELL Limit at $${sellTarget ?? 'Scout stated target'}.`,
           `  - order_type MUST be Limit (not Market) — we are working the order, not dumping.`,
-          `  - time_in_force MUST be GTC — this may take 1-3 sessions to fill.`,
-          `  - price MUST be $${sellTarget ?? 'Sell_Target from Scout output'}.`,
-          `  - DO NOT place a re-entry BUY now — re-entry at $${reentryTarget ?? 'Reentry_Target'} will be handled in a future sweep after the SELL fills.`,
+          `  - time_in_force MUST be GTC.`,
+          ...(!isPartialExit ? [`  - DO NOT place a re-entry BUY now — re-entry at $${reentryTarget ?? 'Reentry_Target'} handled next sweep after fill.`] : [
+              `  - DO NOT sell all units — only ${unitsToSell ?? 'calculated recovery amount'} units.`,
+              `  - DO NOT place a re-entry BUY — remaining ${unitsRemaining ?? '?'} units are already held as the free-ride position.`,
+          ]),
       ].join('\n');
 
       const taResult  = await debate.beginDebate(tradeAroundBriefing, context, remaining);
@@ -789,20 +805,38 @@ async function CheckDebateCycle(context) {
           }
           // Hard-enforce GTC Limit — TRADE AROUND is never a market dump
           if (trade.action === 'SELL') {
-              trade.order_type   = 'Limit';
+              trade.order_type    = 'Limit';
               trade.time_in_force = 'GTC';
-              // Always use Scout's sell target — Gregor's no-candle pricing rules
-              // (e.g. "current + 2%") are irrelevant here. Scout already computed
-              // the optimal exit level from avg_cost and technical context.
+              // Always use Scout's sell target — Gregor's no-candle pricing rules are irrelevant here
               if (sellTarget) trade.price = sellTarget;
+
+              // PARTIAL_EXIT: hard-clamp units to Scout's calculated recovery amount.
+              // Gregor may output all units — mechanical override ensures only the
+              // cost-recovery portion is sold, leaving the free-ride remainder intact.
+              if (isPartialExit && unitsToSell != null) {
+                  if (trade.units == null || Math.abs(trade.units - unitsToSell) > 0.001) {
+                      console.log(`[REDLINE] 🎯 PARTIAL_EXIT unit clamp: ${trade.symbol} — overriding Gregor's ${trade.units ?? 'null'} units → ${unitsToSell} (cost-recovery amount). Remainder: ${unitsRemaining ?? '?'} free-ride shares stay.`);
+                      trade.units = unitsToSell;
+                  }
+                  // Fractional partial sells must use Day tif per SnapTrade rules
+                  if (!Number.isInteger(unitsToSell)) trade.time_in_force = 'Day';
+              }
           }
-          console.log(`[REDLINE] 🔄 Placing TRADE AROUND GTC SELL: ${trade.symbol} @ $${trade.price}`);
+
+          const freeRideNote = isPartialExit ? ` | Free-ride remainder: ${unitsRemaining ?? '?'} shares` : ` | Re-entry: $${reentryTarget ?? 'TBD'}`;
+          console.log(`[REDLINE] ${scenarioEmoji} Placing TRADE AROUND GTC SELL (${scenario}): ${trade.symbol} @ $${trade.price} × ${trade.units ?? 'all'} units`);
           const orderRes = await snapTrade.PlaceOrder(trade);
           if (!orderRes) { console.error(`[REDLINE] ❌ TRADE AROUND order failed for ${trade.symbol}.`); continue; }
-          console.log(`[REDLINE] 🔄 TRADE AROUND GTC SELL placed ✅: ${trade.symbol} @ $${trade.price} | Re-entry target: $${reentryTarget ?? 'TBD'}`);
-          telegramAlerter.sendMessage?.(
-              `🔄 *TRADE AROUND — ${trade.symbol}*\nGTC SELL @ $${trade.price} placed.\nRe-entry target: $${reentryTarget ?? 'TBD'} (next sweep after fill).`
-          );
+          console.log(`[REDLINE] ${scenarioEmoji} TRADE AROUND placed ✅: ${trade.symbol} @ $${trade.price}${freeRideNote}`);
+
+          const tgLabel = isPartialExit
+              ? `🎯 *Partial Exit — ${trade.symbol}*\nSelling ${unitsToSell} units @ $${trade.price} (GTC Limit).\n${unitsRemaining ?? '?'} shares remain as free-ride position (zero cost basis).`
+              : scenario === 'PROFIT_TAKE'
+              ? `💰 *Profit Take — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`
+              : scenario === 'BREAKEVEN_EXIT'
+              ? `🚪 *Breakeven Exit — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`
+              : `🔄 *Trade Around — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`;
+          telegramAlerter.sendMessage?.(tgLabel);
           telegramAlerter.sendTradeAlert(trade);
           try {
               const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
@@ -812,7 +846,7 @@ async function CheckDebateCycle(context) {
                   signalScore: null,
               });
           } catch (err) { console.error('[DecisionLogger] Failed to log TRADE AROUND:', err.message); }
-          await runScribeReport(trade, '🔄 TRADE AROUND');
+          await runScribeReport(trade, `${scenarioEmoji} TRADE AROUND (${scenario})`);
       }
       return;
   }
