@@ -758,7 +758,21 @@ async function CheckDebateCycle(context) {
       const reentryTarget    = reentryMatch       ? parseFloat(reentryMatch[1])       : null;
       const unitsToSell      = unitsToSellMatch   ? parseFloat(unitsToSellMatch[1])   : null;
       const unitsRemaining   = unitsRemainingMatch? parseFloat(unitsRemainingMatch[1]): null;
-      const scenario         = scenarioMatch?.[1]?.toUpperCase().replace(/[\s]/, '_') || 'UNDERWATER';
+      let scenario           = scenarioMatch?.[1]?.toUpperCase().replace(/[\s]/, '_') || 'UNDERWATER';
+
+      // ── PARTIAL_EXIT overflow guard ──────────────────────────────────────────
+      // If Scout's Units_To_Sell exceeds the actual held quantity, cost-basis recovery
+      // requires more shares than exist in the account. PARTIAL_EXIT is impossible —
+      // force a full exit (BREAKEVEN_EXIT) and log the reason.
+      if (scenario === 'PARTIAL_EXIT' && unitsToSell != null) {
+          const cleanedPort = []; // will be re-fetched in beginDebate — check against Scout's reported units
+          const currentUnitsMatch = result.match(/Current_Units[^:]*:\s*([\d.]+)/i);
+          const reportedHeld = currentUnitsMatch ? parseFloat(currentUnitsMatch[1]) : null;
+          if (reportedHeld != null && unitsToSell > reportedHeld + 0.0001) {
+              console.warn(`[REDLINE] ⚠ PARTIAL_EXIT overflow — Scout's Units_To_Sell (${unitsToSell}) > held units (${reportedHeld}). Price dropped too far for cost-basis recovery. Forcing BREAKEVEN_EXIT (full exit).`);
+              scenario = 'BREAKEVEN_EXIT';
+          }
+      }
       const isPartialExit    = scenario === 'PARTIAL_EXIT';
 
       const scenarioEmoji = scenario === 'PROFIT_TAKE' ? '💰' : scenario === 'BREAKEVEN_EXIT' ? '🚪' : isPartialExit ? '🎯' : '🔄';
