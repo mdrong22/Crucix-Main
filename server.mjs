@@ -31,6 +31,7 @@ import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
 import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
+import { EarningsWatcher } from './lib/alerts/earningsWatcher.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -178,6 +179,68 @@ const omega = new GregorLLM({ ...(config.redline.omega || {}), providers: _provi
 const scribe = new GeminiProvider(config.redline.scribe)
 
 const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
+
+// ── Earnings Watcher — 2-min polling during earnings windows ─────────────────
+// Bypasses the 15-min sweep dead zone for high-conviction earnings beats.
+// onTrade reuses the same PDT-check → order → Telegram → Scribe pipeline as
+// the normal execution loop so earnings plays get full post-mortem coverage.
+const earningsWatcher = new EarningsWatcher({
+    scout,
+    debate,
+    snapTrade,
+    telegram: telegramAlerter,
+    getLiveQuote,
+    scoreThreshold: parseInt(process.env.EARNINGS_SCORE_THRESHOLD || '8', 10),
+    onTrade: async (actionable, scoutBriefing) => {
+        // Fetch fresh compliance state — earnings can fire at any hour
+        let stringifiedOrders24h = '[]';
+        let remaining = 1;
+        try {
+            const [orderCompliance, orders24h] = await Promise.all([
+                snapTrade.FetchOrderCompliance(),
+                snapTrade.FetchAccountOrders24h(true),
+            ]);
+            stringifiedOrders24h = DataCleaner.stringifyOrders(orders24h);
+            remaining = calculateRemainingDayTrades(orderCompliance);
+        } catch (e) {
+            console.warn('[EarningsWatcher] Compliance fetch failed — assuming 1 trade remaining:', e.message);
+        }
+
+        for (const trade of actionable) {
+            if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+                console.error(`[EARNINGS] ⛔ CIRCUIT BREAKER: ${trade.action} ${trade.symbol} blocked — PDT limit.`);
+                telegramAlerter.sendMessage?.(`⛔ *EARNINGS PLAY BLOCKED — ${trade.symbol}*\nPDT limit reached — order not placed.`);
+                continue;
+            }
+
+            console.log(`[EARNINGS] ⚡ Placing ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'} (${trade.order_type})`);
+            const orderRes = await snapTrade.PlaceOrder(trade);
+            if (!orderRes) {
+                console.error(`[EARNINGS] ❌ Order failed for ${trade.symbol}.`);
+                telegramAlerter.sendMessage?.(`❌ *EARNINGS ORDER FAILED — ${trade.symbol}*\nSnapTrade rejected the order.`);
+                continue;
+            }
+
+            console.log(`[EARNINGS] ✅ Earnings play executed: ${trade.symbol}`);
+            telegramAlerter.sendTradeAlert(trade);
+
+            try {
+                const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
+                    ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price
+                    ?? 'N/A';
+                logDecisions([trade], scoutBriefing, liveVix, remaining, {
+                    horizon:     'INTRADAY',
+                    trigger:     'EARNINGS_BEAT',
+                    signalScore: null,
+                });
+            } catch (err) {
+                console.error('[DecisionLogger] Failed to log earnings trade:', err.message);
+            }
+
+            await runScribeReport(trade, '⚡ EARNINGS');
+        }
+    },
+});
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -1160,6 +1223,10 @@ async function start() {
     // Fires hard exits on open logged positions when stop-loss, trailing stop,
     // or INTRADAY EOD thresholds are breached. No LLM involved.
     startStopLossWatcher(snapTrade, telegramAlerter);
+
+    // ── Earnings Watcher — 2-min polling during earnings windows ─────────────
+    // Only runs when REDLINE is enabled and FINNHUB_API_KEY is set.
+    if (redLineEnabled) earningsWatcher.start();
   });
 }
 
