@@ -168,10 +168,24 @@ const redLineEnabled = config.redline.enabled
 
 // Inject shared provider pool into each agent so fallback chains work
 const _providers = config.redline.providers || {};
+
+// Scout gets its own Groq fallback using Phi's API key, NOT the shared GROQ_FALLBACK_KEY.
+// Ideas generation and Scout both need Groq as the last resort — if they share a key they
+// compete for the same 100k TPD bucket. Phi's key is on a separate org/account so it has
+// its own quota pool. Scout debates are sequential (after Ideas), so Phi's key won't clash.
+const scoutGroqFallback = config.redline.phi?.apiKey
+  ? new OpenAIProvider({
+      name:    'groq-scout',
+      apiKey:  config.redline.phi.apiKey,
+      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile',
+      baseUrl: config.redline.phi.baseUrl,
+    })
+  : groqIdeasFallback; // same-key fallback if no separate Phi key configured
+
 const scout = new ScoutLLM(
   { ...config.redline.scout, durableAssets: config.redline.durableAssets || [] },
   getLiveQuote,
-  groqIdeasFallback
+  scoutGroqFallback
 );
 const bull  = new PhiLLM({ ...(config.redline.phi   || {}), providers: _providers });
 const bear  = new ThetaLLM({ ...(config.redline.theta || {}), providers: _providers });
