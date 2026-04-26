@@ -10,7 +10,7 @@ export default {
     provider:      process.env.LLM_PROVIDER        || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
     apiKey:        process.env.LLM_API_KEY          || null,
     model:         process.env.LLM_MODEL            || null,
-    fallbackModel: process.env.LLM_FALLBACK_MODEL   || 'gemini-2.5-flash',
+    fallbackModel: process.env.LLM_FALLBACK_MODEL   || 'gemini-2.5-flash-lite',
     baseUrl:       process.env.OLLAMA_BASE_URL       || null,
   },
 
@@ -122,7 +122,7 @@ redline: {
   scribe: {
     apiKey:        process.env.SCRIBE_API_KEY          || null,
     model:         process.env.SCRIBE_MODEL            || null,
-    fallbackModel: process.env.SCRIBE_FALLBACK_MODEL   || 'gemini-2.5-flash',
+    fallbackModel: process.env.SCRIBE_FALLBACK_MODEL   || 'gemini-2.5-flash-lite',
     baseUrl:       process.env.GEMINI_BASE_URL         || null,
   },
 
