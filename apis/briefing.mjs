@@ -56,6 +56,11 @@ import { briefing as newsapi }    from './sources/newsapi.mjs';
 import { briefing as sec }        from './sources/sec.mjs';
 import { briefing as finnhub }    from './sources/finnhub.mjs';
 
+// === Tier 9: Semiconductor Lead Indicators ===
+import { briefing as trendforce } from './sources/trendforce.mjs';  // DRAM/NAND pricing, SEMI B2B ratio
+import { briefing as benzinga }   from './sources/benzinga.mjs';    // Fast financial news (BENZINGA_API_KEY optional)
+import { briefing as chipsact }   from './sources/chipsact.mjs';    // CHIPS Act grants + BIS export controls
+
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 
 export async function runSource(name, fn, ...args) {
@@ -76,7 +81,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 34 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 37 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -129,6 +134,11 @@ export async function fullBriefing() {
     runSource('NewsAPI',    newsapi),                             // NEWS_API_KEY
     runSource('SEC-EDGAR',  sec),                                 // no key — 8-K + Form 4
     runSource('Finnhub',    finnhub),                             // FINNHUB_API_KEY
+
+    // Tier 9: Semiconductor Lead Indicators
+    runSource('TrendForce', trendforce),                          // no key — DRAM/NAND pricing, SEMI B2B
+    runSource('Benzinga',   benzinga),                            // BENZINGA_API_KEY optional — RSS fallback active
+    runSource('CHIPS-Act',  chipsact),                            // no key — Federal Register + USAspending grants
   ];
 
   // Each runSource has its own 30s timeout, so allSettled will resolve

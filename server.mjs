@@ -717,7 +717,23 @@ async function runSweepCycle() {
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
-    if(redLineEnabled && currentContext) await CheckDebateCycle(currentContext)
+    if (redLineEnabled && currentContext) {
+      // Delta gate: skip Scout when no open positions to manage AND market is genuinely quiet.
+      // If there are open logged positions, Scout MUST run regardless of delta — it handles
+      // TRADE AROUND / DEFENSIVE / AVERAGE DOWN which are portfolio-driven, not market-driven.
+      const openPositionCount = getOpenDecisions().length;
+      const criticalChanges   = delta?.summary?.criticalChanges ?? 0;
+      const totalChanges      = delta?.summary?.totalChanges     ?? 0;
+      const newSignals        = delta?.signals?.new?.length       ?? 0;
+      const isQuietDelta      = openPositionCount === 0 && criticalChanges === 0 && totalChanges < 3 && newSignals === 0;
+
+      if (isQuietDelta) {
+        console.log(`[REDLINE] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Scout skipped this cycle.`);
+      } else {
+        if (openPositionCount > 0) console.log(`[REDLINE] Scout running — ${openPositionCount} open position(s) to monitor.`);
+        await CheckDebateCycle(currentContext);
+      }
+    }
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
 
@@ -730,53 +746,35 @@ async function runSweepCycle() {
 }
 
 async function runPortfolio() {
-  console.log('[Crucix] Generating Report...')
-  telegramAlerter.sendMessage('Generating Report ...')
-  sweepInProgress = true;
-  sweepStartedAt = new Date().toISOString();
-  broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
-  console.log(`${'='.repeat(60)}`);
+  // Uses currentData from the last sweep — no redundant fullBriefing() re-run.
+  // This saves ~25 API source calls and the synthesize+delta pipeline on every /portfolio invocation.
+  console.log('[Crucix] Generating Portfolio Report (using cached sweep data)...');
+  telegramAlerter.sendMessage('Generating Portfolio Report ...');
+
+  if (!currentData) {
+    const msg = '⏳ No sweep data yet — please wait for the first sweep to complete.';
+    telegramAlerter.sendMessage(msg);
+    return null;
+  }
+
+  const delta        = memory.getLastDelta ? memory.getLastDelta() : null;
+  const previousIdeas = memory.getLastRun?.()?.ideas || [];
 
   try {
-    // 1. Run the full briefing sweep
-    const rawData = await fullBriefing();
-
-    // 2. Save to runs/latest.json
-    writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
-    lastSweepTime = new Date().toISOString();
-
-    // 3. Synthesize into dashboard format
-    console.log('[Crucix] Synthesizing dashboard data...');
-    const synthesized = await synthesize(rawData);
-
-    // 4. Delta computation + memory
-    const delta = memory.addRun(synthesized);
-    synthesized.delta = delta;
-    const previousIdeas = memory.getLastRun()?.ideas || [];
-  // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
-  if (llmProvider?.isConfigured) {
-    let result;
-    try {
-    const [accountOrders, portfolio] = await Promise.all([snapTrade.getBuyDates(),snapTrade.FetchUserTrades()]);
-    result = await runPortfolioBrief(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(portfolio), accountOrders )
-    return result.text
-    } catch(err) {
-      console.error("Failed to get Portfolio Briefing: ", err.message, '\n', (result?.text ?? '(no result)'))
-    }
-    finally {
-      console.log("[Crucix] Report Created at", new Date().toISOString())
-      console.log(`${'='.repeat(60)}`)
-      sweepInProgress = false;
-    }
+    const [accountOrders, portfolio] = await Promise.all([
+      snapTrade.getBuyDates(),
+      snapTrade.FetchUserTrades(),
+    ]);
+    const result = await runPortfolioBrief(
+      llmProvider, currentData, delta, previousIdeas,
+      JSON.stringify(portfolio), accountOrders
+    );
+    console.log('[Crucix] Portfolio Report created at', new Date().toISOString());
+    return result?.text ?? null;
+  } catch (err) {
+    console.error('[Crucix] Portfolio report failed:', err.message);
+    return null;
   }
-} catch (err) {
-  console.error('[Crucix] Sweep failed:', err.message);
-  broadcast({ type: 'sweep_error', error: err.message });
-} finally {
-  sweepInProgress = false;
-}
 }
 
 async function CheckDebateCycle(context) {

@@ -616,6 +616,39 @@ export async function synthesize(data) {
     who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
     congress: data.sources.Congress || null, // Congressional trading intelligence
+
+    // Semiconductor lead indicators (Tier 9)
+    trendforce: (() => {
+      const tf = data.sources.TrendForce || {};
+      return {
+        b2bRatio:        tf.b2bRatio        ?? null,
+        b2bBullish:      tf.b2bBullish      ?? null,
+        memoryDirection: tf.memoryDirection  || 'NEUTRAL',
+        memorySignals:   (tf.memorySignals  || []).slice(0, 4),
+        chipSignals:     (tf.chipSignals    || []).slice(0, 4),
+        signals:         tf.signals         || [],
+      };
+    })(),
+    benzinga: (() => {
+      const bz = data.sources.Benzinga || {};
+      return {
+        apiActive:       bz.apiActive       || false,
+        topHeadlines:    (bz.topHeadlines   || []).slice(0, 8),
+        upgradeDowngrade:(bz.upgradeDowngrade || []).slice(0, 4),
+        signals:         bz.signals         || [],
+      };
+    })(),
+    chipsact: (() => {
+      const ca = data.sources['CHIPS-Act'] || {};
+      return {
+        bisExportControls:   (ca.bisExportControls    || []).slice(0, 4),
+        chipsPolicyArticles: (ca.chipsPolicyArticles  || []).slice(0, 4),
+        chipsGrantAwards:    (ca.chipsGrantAwards     || []).slice(0, 5),
+        totalGrantsM:        ca.totalGrantsM          || 0,
+        signals:             ca.signals               || [],
+      };
+    })(),
+
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
