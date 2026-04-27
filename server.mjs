@@ -50,6 +50,23 @@ let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 let currentContext = null;
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
+let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
+
+// Minimum gap between Ideas LLM calls. Market macro signals don't change every 15 min.
+// At 15-min sweep intervals: 60 min = 4 sweeps skipped between runs (24 calls/day vs 96).
+// Override with IDEAS_INTERVAL_MINUTES in .env.
+const IDEAS_THROTTLE_MS = parseInt(process.env.IDEAS_INTERVAL_MINUTES || '60', 10) * 60 * 1000;
+
+// Returns true if current time is within the active trading window (ET).
+// Scout scans for NEW entries — no point running when the market is closed.
+// Exception: always runs if there are open logged positions to monitor.
+function isMarketWindow() {
+  const et    = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day   = et.getDay();                           // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;            // weekends
+  const h = et.getHours() + et.getMinutes() / 60;
+  return h >= 9.0 && h <= 16.5;                       // 9:00 AM – 4:30 PM ET
+}
 
 // Extracts only the structured labeled fields from Scout's briefing output.
 // Gives the Scribe all analytical data in ~400 chars instead of 1500+,
@@ -650,34 +667,56 @@ async function runSweepCycle() {
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
+    // 5. LLM-powered trade ideas — throttled + delta-gated to reduce Gemini quota burn.
+    //
+    // THROTTLE: minimum IDEAS_THROTTLE_MS between LLM calls (default 60 min = 24 calls/day vs 96).
+    //   Market macro signals don't change materially every 15 minutes.
+    //
+    // DELTA GATE: if nothing significant changed since last sweep, reuse the previous ideas set.
+    //   Skips the LLM call entirely — Scout still gets the cached context for debate.
+    //
+    // Both gates must clear for a new call to fire.
     if (llmProvider?.isConfigured) {
-      try {
-        console.log('[Crucix] Generating LLM trade ideas...');
-        
-        const previousIdeas = memory.getLastRun()?.ideas || [];
-        const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders, groqIdeasFallback);
-        if (ideasResult) {
-          const { llmIdeas, context } = ideasResult;
-          currentContext = context;
-          if (llmIdeas) {
-            synthesized.ideas = llmIdeas;
-            synthesized.ideasSource = 'llm';
-            console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
+      const ideasElapsed   = lastIdeasRunAt ? Date.now() - lastIdeasRunAt : Infinity;
+      const ideasThrottled = ideasElapsed < IDEAS_THROTTLE_MS;
+      const criticalChg    = delta?.summary?.criticalChanges ?? 0;
+      const totalChg       = delta?.summary?.totalChanges    ?? 0;
+      const newSignals     = delta?.signals?.new?.length     ?? 0;
+      const ideasDeltaQuiet = criticalChg === 0 && totalChg < 3 && newSignals === 0;
+
+      if (ideasThrottled || ideasDeltaQuiet) {
+        // Reuse previous ideas — preserve context for Scout debate
+        const lastRun = memory.getLastRun();
+        synthesized.ideas = lastRun?.ideas || [];
+        synthesized.ideasSource = 'cached';
+        if (ideasThrottled) {
+          const minsLeft = Math.round((IDEAS_THROTTLE_MS - ideasElapsed) / 60000);
+          console.log(`[Crucix] Ideas throttled — ${minsLeft}m until next run. Reusing ${synthesized.ideas.length} cached ideas.`);
+        } else {
+          console.log(`[Crucix] Ideas skipped — delta quiet (${totalChg} changes, ${criticalChg} critical). Reusing ${synthesized.ideas.length} cached ideas.`);
+        }
+      } else {
+        try {
+          console.log(`[Crucix] Generating LLM trade ideas (${Math.round(ideasElapsed / 60000)}m since last run, delta: ${totalChg} changes, ${criticalChg} critical)...`);
+          const previousIdeas = memory.getLastRun()?.ideas || [];
+          const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders, groqIdeasFallback);
+          if (ideasResult) {
+            const { llmIdeas, context } = ideasResult;
+            currentContext  = context;
+            lastIdeasRunAt  = Date.now();
+            synthesized.ideas = llmIdeas || [];
+            synthesized.ideasSource = llmIdeas?.length > 0 ? 'llm' : 'llm-failed';
+            if (llmIdeas?.length > 0) console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
           } else {
             synthesized.ideas = [];
             synthesized.ideasSource = 'llm-failed';
+            console.warn('[Crucix] LLM ideas returned null — sweep continues, using prior context for debate.');
           }
-        } else {
-          // generateLLMIdeas returned null — model failed, preserve last known context for debate
+        } catch (llmErr) {
+          console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
           synthesized.ideas = [];
           synthesized.ideasSource = 'llm-failed';
-          console.warn('[Crucix] LLM ideas returned null — sweep continues, using prior context for debate.');
         }
-      } catch (llmErr) {
-        console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
       }
     } else {
       synthesized.ideas = [];
@@ -718,19 +757,29 @@ async function runSweepCycle() {
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     if (redLineEnabled && currentContext) {
-      // Delta gate: skip Scout when no open positions to manage AND market is genuinely quiet.
-      // If there are open logged positions, Scout MUST run regardless of delta — it handles
-      // TRADE AROUND / DEFENSIVE / AVERAGE DOWN which are portfolio-driven, not market-driven.
       const openPositionCount = getOpenDecisions().length;
       const criticalChanges   = delta?.summary?.criticalChanges ?? 0;
       const totalChanges      = delta?.summary?.totalChanges     ?? 0;
       const newSignals        = delta?.signals?.new?.length       ?? 0;
-      const isQuietDelta      = openPositionCount === 0 && criticalChanges === 0 && totalChanges < 3 && newSignals === 0;
+
+      // Delta gate: skip when no open positions AND nothing significant changed.
+      const isQuietDelta = openPositionCount === 0 && criticalChanges === 0 && totalChanges < 3 && newSignals === 0;
+
+      // Market hours gate: Scout's entry-scanning purpose only applies during market hours.
+      // If market is closed AND there are no open positions to monitor, skip entirely.
+      // If there ARE open positions (TRADE AROUND / DEFENSIVE / AVERAGE DOWN), always run.
+      const inWindow = isMarketWindow();
 
       if (isQuietDelta) {
-        console.log(`[REDLINE] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Scout skipped this cycle.`);
+        console.log(`[REDLINE] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Scout skipped.`);
+      } else if (!inWindow && openPositionCount === 0) {
+        console.log(`[REDLINE] 🌙 Market closed — Scout skipped (no open positions). Next window: 9:00 AM ET.`);
       } else {
-        if (openPositionCount > 0) console.log(`[REDLINE] Scout running — ${openPositionCount} open position(s) to monitor.`);
+        if (!inWindow && openPositionCount > 0) {
+          console.log(`[REDLINE] 🌙 Market closed but ${openPositionCount} open position(s) — Scout running for portfolio monitoring.`);
+        } else if (openPositionCount > 0) {
+          console.log(`[REDLINE] Scout running — ${openPositionCount} open position(s) to monitor.`);
+        }
         await CheckDebateCycle(currentContext);
       }
     }
