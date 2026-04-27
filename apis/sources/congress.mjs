@@ -1,18 +1,24 @@
-// congress.mjs — Congressional Trading Intelligence
+// congress.mjs — Congressional Trading Intelligence + FMP Macro Data
 // Provider: Financial Modeling Prep (FMP) — https://financialmodelingprep.com
 // Free tier: 250 calls/day. Get a key at https://financialmodelingprep.com/developer/docs
 // Env var required: FMP_API_KEY
 //
 // RATE LIMIT STRATEGY:
 //   250 calls/day limit. Sweep runs every 10 min = 144 sweeps/day.
-//   Without caching: 144 × 2 calls = 288/day → over limit.
-//   With CACHE_TTL_MS (4 hours default): ~6 refreshes/day × 2 calls = 12 calls/day.
-//   Congressional disclosures are filed days/weeks after trades — 4h cache is safe.
-//   Set env var CONGRESS_CACHE_HOURS to override (e.g. CONGRESS_CACHE_HOURS=2).
+//   Daily cache (24h default): 1 refresh/day × ~5 calls = ~5 calls/day total:
+//     2 calls  — Senate (stable + optional legacy fallback)
+//     2 calls  — House  (stable + optional legacy fallback)
+//     1 call   — Economic Calendar (FOMC/CPI/NFP/GDP upcoming)
+//     1 call   — Upgrades/Downgrades (analyst calls last 3d)
+//   Congressional disclosures are filed days/weeks after trades — 24h cache is safe.
+//   Econ calendar changes ~weekly — 24h cache is fine.
+//   Set env var CONGRESS_CACHE_HOURS to override (e.g. CONGRESS_CACHE_HOURS=12).
 //
-// Endpoints used (stable v2 API — flat array responses, no nesting):
-//   Senate: https://financialmodelingprep.com/stable/senate-latest?apikey=KEY
-//   House:  https://financialmodelingprep.com/stable/house-latest?apikey=KEY
+// Endpoints used (stable v2 API):
+//   Senate:               https://financialmodelingprep.com/stable/senate-latest?apikey=KEY
+//   House:                https://financialmodelingprep.com/stable/house-latest?apikey=KEY
+//   Economic Calendar:    https://financialmodelingprep.com/stable/economic?from=DATE&to=DATE&apikey=KEY
+//   Upgrades/Downgrades:  https://financialmodelingprep.com/api/v4/upgrades-downgrades?page=0&apikey=KEY
 //
 // Fallback to legacy v4 if stable returns nothing:
 //   Senate: https://financialmodelingprep.com/api/v4/senate-trading?page=0&apikey=KEY
@@ -96,8 +102,8 @@ function matchInsider(memberName) {
 // Keeps FMP API usage well under the 250 calls/day free tier limit.
 
 const CACHE_TTL_MS = (() => {
-  const hours = parseFloat(process.env.CONGRESS_CACHE_HOURS || '4');
-  return (isNaN(hours) || hours <= 0 ? 4 : hours) * 60 * 60 * 1000;
+  const hours = parseFloat(process.env.CONGRESS_CACHE_HOURS || '24');
+  return (isNaN(hours) || hours <= 0 ? 24 : hours) * 60 * 60 * 1000;
 })();
 
 let _cache = null;   // { result, fetchedAt: Date, callCount: number }
@@ -124,12 +130,115 @@ function ageLabel(ms) {
 }
 
 function endpoints(key) {
+  // Econ calendar: look-ahead 14 days + look-back 2 days
+  const fromDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const toDate   = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
   return {
-    senateStable:  `${BASE}/stable/senate-latest?apikey=${key}`,
-    houseStable:   `${BASE}/stable/house-latest?apikey=${key}`,
-    senateLegacy:  `${BASE}/api/v4/senate-trading?page=0&apikey=${key}`,
-    houseLegacy:   `${BASE}/api/v4/house-trading?page=0&apikey=${key}`,
+    senateStable:      `${BASE}/stable/senate-latest?apikey=${key}`,
+    houseStable:       `${BASE}/stable/house-latest?apikey=${key}`,
+    senateLegacy:      `${BASE}/api/v4/senate-trading?page=0&apikey=${key}`,
+    houseLegacy:       `${BASE}/api/v4/house-trading?page=0&apikey=${key}`,
+    econCalendar:      `${BASE}/stable/economic?from=${fromDate}&to=${toDate}&country=US&apikey=${key}`,
+    upgradesDowngrades:`${BASE}/api/v4/upgrades-downgrades?page=0&apikey=${key}`,
   };
+}
+
+// ─── Macro Event Filters ──────────────────────────────────────────────────────
+// FMP economic calendar returns every scheduled release — filter to market-moving events
+const HIGH_IMPACT_EVENTS = [
+  'fomc', 'federal reserve', 'interest rate', 'fed funds',
+  'cpi', 'inflation', 'consumer price',
+  'nfp', 'non-farm', 'nonfarm', 'payroll', 'employment',
+  'gdp', 'gross domestic',
+  'pce', 'personal consumption',
+  'ppi', 'producer price',
+  'retail sales',
+  'ism manufacturing', 'ism services', 'pmi',
+  'jolts', 'job openings',
+  'unemployment claims', 'initial claims',
+  'treasury auction', 'bond auction',
+];
+
+function isHighImpact(event = '') {
+  const lower = event.toLowerCase();
+  return HIGH_IMPACT_EVENTS.some(k => lower.includes(k));
+}
+
+// Tickers to track for upgrades/downgrades (our semi + macro watchlist)
+const WATCH_TICKERS = new Set([
+  'NVDA','AMD','INTC','QCOM','MU','AMAT','KLAC','LRCX','ASML','TSM',
+  'AVGO','TXN','MRVL','AAPL','MSFT','GOOGL','META','AMZN','TSLA',
+  'SPY','QQQ','SMH','SOXX','XLK','GLD','TLT','IWM',
+  'BA','LMT','RTX','NOC','GD','HII',             // defense
+  'XOM','CVX','SLB','HAL','COP',                  // energy
+  'JPM','GS','MS','BAC','C',                       // financials
+]);
+
+async function fetchEconCalendar(ep) {
+  _dailyCallCount++;
+  try {
+    const raw = unwrap(await safeFetch(ep.econCalendar, { timeout: 15000 }));
+    if (!raw || !Array.isArray(raw)) return [];
+
+    const events = raw
+      .filter(e => e.event && (e.impact === 'High' || isHighImpact(e.event)))
+      .map(e => ({
+        date:     e.date     || '',
+        event:    e.event    || '',
+        country:  e.country  || 'US',
+        impact:   e.impact   || '',
+        actual:   e.actual   != null ? String(e.actual)   : null,
+        estimate: e.estimate != null ? String(e.estimate) : null,
+        previous: e.previous != null ? String(e.previous) : null,
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // Separate: upcoming (no actual yet) vs recently released
+    const now       = new Date();
+    const upcoming  = events.filter(e => !e.actual && new Date(e.date) >= now).slice(0, 8);
+    const released  = events.filter(e =>  e.actual).slice(-5); // last 5 released
+
+    console.log(`[Congress/EconCal] ${raw.length} events → ${events.length} high-impact, ${upcoming.length} upcoming`);
+    return { upcoming, released, all: events };
+  } catch (err) {
+    console.warn(`[Congress/EconCal] Fetch failed: ${err.message}`);
+    return { upcoming: [], released: [], all: [] };
+  }
+}
+
+async function fetchUpgradesDowngrades(ep) {
+  _dailyCallCount++;
+  try {
+    const raw = unwrap(await safeFetch(ep.upgradesDowngrades, { timeout: 15000 }));
+    if (!raw || !Array.isArray(raw)) return [];
+
+    const cutoff = new Date(Date.now() - 3 * 86_400_000); // last 3 days
+    const filtered = raw
+      .filter(u => {
+        if (!u.symbol || !u.publishedDate) return false;
+        if (!WATCH_TICKERS.has(u.symbol.toUpperCase())) return false;
+        try { return new Date(u.publishedDate) >= cutoff; } catch { return false; }
+      })
+      .map(u => ({
+        ticker:       (u.symbol          || '').toUpperCase(),
+        action:       u.action           || '',   // 'upgrade' | 'downgrade' | 'initiated' | 'reiterated'
+        fromGrade:    u.previousGrade    || '',
+        toGrade:      u.newGrade         || '',
+        analyst:      u.gradingCompany   || '',
+        priceTarget:  u.priceTarget      || null,
+        date:         u.publishedDate    || '',
+      }))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const upgrades   = filtered.filter(u => u.action.toLowerCase().includes('upgrade'));
+    const downgrades = filtered.filter(u => u.action.toLowerCase().includes('downgrade'));
+
+    console.log(`[Congress/Upgrades] ${raw.length} total → ${filtered.length} watchlist hits (${upgrades.length}↑ ${downgrades.length}↓) in last 3d`);
+    return { all: filtered, upgrades, downgrades };
+  } catch (err) {
+    console.warn(`[Congress/Upgrades] Fetch failed: ${err.message}`);
+    return { all: [], upgrades: [], downgrades: [] };
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -301,9 +410,11 @@ async function _fetchFresh(key) {
 
   const ep = endpoints(key);
 
-  const [senateTrades, houseTrades] = await Promise.all([
+  const [senateTrades, houseTrades, econCalendar, upgradesDowngrades] = await Promise.all([
     fetchChamber(ep.senateStable, ep.senateLegacy, normalizeSenate, 'Senate'),
     fetchChamber(ep.houseStable,  ep.houseLegacy,  normalizeHouse,  'House'),
+    fetchEconCalendar(ep),
+    fetchUpgradesDowngrades(ep),
   ]);
 
   const allTrades  = [...senateTrades, ...houseTrades];
@@ -375,6 +486,8 @@ async function _fetchFresh(key) {
       houseOk, senateOk,
       topBuys: [], topSells: [], heavyHitters: [],
       insiderAlerts: [], insiderTrades: [],
+      econCalendar,
+      upgradesDowngrades,
       summary: 'Congressional data unavailable this cycle — no valid trades returned.',
     };
   }
@@ -426,9 +539,11 @@ async function _fetchFresh(key) {
     lookbackDays:     LOOKBACK_DAYS,
     topBuys, topSells, heavyHitters,
     byTicker:      byTicker.slice(0, 20),
-    insiderAlerts,                         // priority: known trader watchlist hits
-    insiderTrades,                         // full raw trades for known insiders
+    insiderAlerts,                          // priority: known trader watchlist hits
+    insiderTrades,                          // full raw trades for known insiders
     knownInsiderCount: KNOWN_INSIDERS.size,
+    econCalendar,                           // upcoming FOMC/CPI/NFP/GDP events
+    upgradesDowngrades,                     // recent analyst upgrades/downgrades on watchlist
     summary,
   };
 }

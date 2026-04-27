@@ -1,4 +1,4 @@
-// Benzinga — Fast financial news (faster than Yahoo Finance)
+// Benzinga — Fast financial news + Options Flow intelligence
 // Optional API key: BENZINGA_API_KEY in .env
 // Free tier: https://www.benzinga.com/apis/quantitative-finance/ — 500 req/month
 //
@@ -6,6 +6,11 @@
 //   Benzinga publishes analyst upgrades/downgrades and earnings previews 15-30 min
 //   faster than Yahoo Finance's aggregated feed. For semiconductor stocks specifically,
 //   it also carries supply-chain analyst notes that Yahoo rarely surfaces.
+//
+// Options Flow (requires API key):
+//   Unusual options activity is one of the highest-conviction institutional signals.
+//   Large dark-pool sweeps on OTM calls/puts precede major moves by 1-3 days.
+//   Endpoint: /api/v1/signal/option_activity — returns recent sweeps with sentiment.
 //
 // Without a key: falls back to Benzinga's public RSS + EE Times RSS (semiconductor trade pub).
 //
@@ -52,6 +57,84 @@ async function fetchBenzingaAPI(apiKey) {
     tickers: (item.stocks  || []).map(s => s.name).filter(Boolean),
     source:  'Benzinga',
   }));
+}
+
+// ── Options Flow (requires API key) ─────────────────────────────────────────
+// Unusual options activity — large sweeps on OTM contracts signal institutional positioning.
+// Sentiment: BULLISH = large call sweeps, BEARISH = large put sweeps.
+// aggressor_ind: 1.0 = buyer initiated (aggressive), 0.0 = seller initiated.
+const OPTIONS_WATCH_TICKERS = new Set([
+  ...SEMI_TICKERS,
+  'SPY','QQQ','IWM','SMH','SOXX',
+  'AAPL','MSFT','GOOGL','META','AMZN','TSLA',
+  'BA','LMT','RTX','NOC',         // defense
+  'XOM','CVX','COP',              // energy
+  'JPM','GS','MS',                // financials
+  'GLD','SLV','TLT',              // macro hedges
+]);
+
+async function fetchOptionsFlow(apiKey) {
+  try {
+    // Fetch recent unusual options activity (last 24h)
+    const url = `https://api.benzinga.com/api/v1/signal/option_activity?token=${apiKey}&pageSize=50&updated=0`;
+    const data = await safeFetch(url, { timeout: 12000 });
+
+    // Response can be { option_activity: [...] } or raw array
+    const items = Array.isArray(data)
+      ? data
+      : (data?.option_activity || data?.data || []);
+
+    if (!items.length) return [];
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const filtered = items
+      .filter(o => {
+        if (!o.ticker || !OPTIONS_WATCH_TICKERS.has((o.ticker || '').toUpperCase())) return false;
+        // Only surface large sweeps — size × premium must be meaningful
+        const premium = parseFloat(o.cost_basis || o.premium || 0);
+        if (premium < 50_000) return false;  // ignore under $50k notional
+        // Recency check
+        try {
+          const dt = new Date(o.date_expiration ? o.date : o.time || o.created || '');
+          if (dt < cutoff) return false;
+        } catch { /* include if date unreadable */ }
+        return true;
+      })
+      .map(o => {
+        const premium   = parseFloat(o.cost_basis || o.premium || 0);
+        const aggressor = parseFloat(o.aggressor_ind || 0.5);
+        const sentiment = (o.put_call || '').toUpperCase() === 'CALL'
+          ? (aggressor >= 0.6 ? 'BULLISH' : 'NEUTRAL')
+          : (aggressor >= 0.6 ? 'BEARISH' : 'NEUTRAL');
+        return {
+          ticker:     (o.ticker     || '').toUpperCase(),
+          putCall:    (o.put_call   || '').toUpperCase(),
+          strike:     o.strike_price || o.strike || null,
+          expiry:     o.date_expiration || o.expiration || '',
+          premium:    premium,
+          premiumFmt: premium >= 1_000_000
+            ? `$${(premium / 1_000_000).toFixed(1)}M`
+            : `$${(premium / 1_000).toFixed(0)}k`,
+          sentiment,
+          aggressor,
+          volume:     o.volume       || null,
+          openInterest: o.open_interest || null,
+          date:       o.date || o.time || '',
+          type:       o.option_activity_type || '',  // 'SWEEP' | 'BLOCK' | 'SPLIT'
+        };
+      })
+      .sort((a, b) => b.premium - a.premium);
+
+    const bullish = filtered.filter(o => o.sentiment === 'BULLISH');
+    const bearish = filtered.filter(o => o.sentiment === 'BEARISH');
+
+    console.log(`[Benzinga/Options] ${items.length} raw → ${filtered.length} watchlist sweeps (${bullish.length}↑ ${bearish.length}↓)`);
+    return { all: filtered.slice(0, 20), bullish: bullish.slice(0, 8), bearish: bearish.slice(0, 8) };
+  } catch (err) {
+    console.warn(`[Benzinga/Options] Fetch failed: ${err.message}`);
+    return { all: [], bullish: [], bearish: [] };
+  }
 }
 
 // ── RSS fallback (no key needed) ─────────────────────────────────────────────
@@ -103,12 +186,22 @@ export async function briefing() {
   const apiKey   = process.env.BENZINGA_API_KEY;
   let rawItems   = [];
   let usedApi    = false;
+  let optionsFlow = { all: [], bullish: [], bearish: [] };
 
   if (apiKey) {
-    try {
-      const apiItems = await fetchBenzingaAPI(apiKey);
-      if (apiItems?.length > 0) { rawItems = apiItems; usedApi = true; }
-    } catch { /* fall through to RSS */ }
+    // Run news API and options flow fetch in parallel
+    const [newsResult, optionsResult] = await Promise.allSettled([
+      fetchBenzingaAPI(apiKey),
+      fetchOptionsFlow(apiKey),
+    ]);
+
+    if (newsResult.status === 'fulfilled' && newsResult.value?.length > 0) {
+      rawItems = newsResult.value;
+      usedApi  = true;
+    }
+    if (optionsResult.status === 'fulfilled' && optionsResult.value) {
+      optionsFlow = optionsResult.value;
+    }
   }
 
   if (!usedApi) {
@@ -144,6 +237,15 @@ export async function briefing() {
     item.signalTerms.some(t => t === 'upgrade' || t === 'downgrade')
   );
 
+  // Build options flow signals string for LLM context
+  const optionSignals = [];
+  for (const o of optionsFlow.bullish.slice(0, 3)) {
+    optionSignals.push(`BULLISH SWEEP ${o.ticker} ${o.putCall} $${o.strike} exp ${o.expiry} ${o.premiumFmt}${o.type ? ` [${o.type}]` : ''}`);
+  }
+  for (const o of optionsFlow.bearish.slice(0, 3)) {
+    optionSignals.push(`BEARISH SWEEP ${o.ticker} ${o.putCall} $${o.strike} exp ${o.expiry} ${o.premiumFmt}${o.type ? ` [${o.type}]` : ''}`);
+  }
+
   return {
     source:          usedApi ? 'Benzinga API' : 'Benzinga RSS Fallback',
     timestamp:       new Date().toISOString(),
@@ -153,6 +255,8 @@ export async function briefing() {
     topHeadlines:    top,
     upgradeDowngrade,
     signals:         signals.length > 0 ? signals : ['No high-signal financial headlines detected'],
+    optionsFlow,                                      // unusual options activity (requires API key)
+    optionSignals:   optionSignals.length > 0 ? optionSignals : [],
   };
 }
 

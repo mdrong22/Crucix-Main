@@ -615,7 +615,24 @@ export async function synthesize(data) {
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
-    congress: data.sources.Congress || null, // Congressional trading intelligence
+    congress: (() => {
+      const cg = data.sources.Congress || null;
+      if (!cg) return null;
+      return {
+        ...cg,
+        // Upcoming FOMC/CPI/NFP/GDP events (next 14 days)
+        econCalendar: {
+          upcoming: (cg.econCalendar?.upcoming || []).slice(0, 8),
+          released: (cg.econCalendar?.released || []).slice(0, 5),
+        },
+        // Analyst upgrades/downgrades on watchlist tickers (last 3 days)
+        upgradesDowngrades: {
+          upgrades:   (cg.upgradesDowngrades?.upgrades   || []).slice(0, 8),
+          downgrades: (cg.upgradesDowngrades?.downgrades || []).slice(0, 8),
+          all:        (cg.upgradesDowngrades?.all        || []).slice(0, 15),
+        },
+      };
+    })(),
 
     // Semiconductor lead indicators (Tier 9)
     trendforce: (() => {
@@ -632,10 +649,17 @@ export async function synthesize(data) {
     benzinga: (() => {
       const bz = data.sources.Benzinga || {};
       return {
-        apiActive:       bz.apiActive       || false,
-        topHeadlines:    (bz.topHeadlines   || []).slice(0, 8),
+        apiActive:       bz.apiActive        || false,
+        topHeadlines:    (bz.topHeadlines    || []).slice(0, 8),
         upgradeDowngrade:(bz.upgradeDowngrade || []).slice(0, 4),
-        signals:         bz.signals         || [],
+        signals:         bz.signals          || [],
+        // Unusual options activity — institutional positioning (requires BENZINGA_API_KEY)
+        optionsFlow: {
+          bullish: (bz.optionsFlow?.bullish || []).slice(0, 6),
+          bearish: (bz.optionsFlow?.bearish || []).slice(0, 6),
+          all:     (bz.optionsFlow?.all     || []).slice(0, 15),
+        },
+        optionSignals:   bz.optionSignals    || [],
       };
     })(),
     chipsact: (() => {
