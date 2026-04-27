@@ -183,7 +183,7 @@ const scoutGroqFallback = config.redline.phi?.apiKey
   : groqIdeasFallback; // same-key fallback if no separate Phi key configured
 
 const scout = new ScoutLLM(
-  { ...config.redline.scout, durableAssets: config.redline.durableAssets || [] },
+  { ...config.redline.scout, durableAssets: config.redline.durableAssets || [], providers: _providers },
   getLiveQuote,
   scoutGroqFallback
 );
