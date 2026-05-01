@@ -672,6 +672,22 @@ export async function synthesize(data) {
         signals:             ca.signals               || [],
       };
     })(),
+    finnhub: (() => {
+      const fh = data.sources.Finnhub || {};
+      return {
+        news:        fh.news            || {},
+        signals:     fh.signals         || [],
+        earnings:    (fh.earnings_next7 || []).slice(0, 10),
+        insiderBuys: (fh.insider_buys   || []).slice(0, 5),
+      };
+    })(),
+    newsapi: (() => {
+      const na = data.sources.NewsAPI || {};
+      return {
+        categories: na.categories || {},
+        signals:    na.signals    || [],
+      };
+    })(),
 
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)

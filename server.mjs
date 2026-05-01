@@ -13,7 +13,7 @@ import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
-import { generateLLMIdeas, runPortfolioBrief } from './lib/llm/ideas.mjs';
+import { generateLLMIdeas, runPortfolioBrief, compactSweepForLLM } from './lib/llm/ideas.mjs';
 import { OpenAIProvider } from './lib/llm/openai.mjs';
 import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
@@ -689,11 +689,14 @@ async function runSweepCycle() {
         const lastRun = memory.getLastRun();
         synthesized.ideas = lastRun?.ideas || [];
         synthesized.ideasSource = 'cached';
+        // Always rebuild context from fresh sweep data so Scout sees current news
+        // even when the ideas LLM call is throttled (context ≠ ideas — no LLM needed here)
+        currentContext = compactSweepForLLM(synthesized, delta, synthesized.ideas);
         if (ideasThrottled) {
           const minsLeft = Math.round((IDEAS_THROTTLE_MS - ideasElapsed) / 60000);
-          console.log(`[Crucix] Ideas throttled — ${minsLeft}m until next run. Reusing ${synthesized.ideas.length} cached ideas.`);
+          console.log(`[Crucix] Ideas throttled — ${minsLeft}m until next run. Reusing ${synthesized.ideas.length} cached ideas. Context rebuilt fresh.`);
         } else {
-          console.log(`[Crucix] Ideas skipped — delta quiet (${totalChg} changes, ${criticalChg} critical). Reusing ${synthesized.ideas.length} cached ideas.`);
+          console.log(`[Crucix] Ideas skipped — delta quiet (${totalChg} changes, ${criticalChg} critical). Reusing ${synthesized.ideas.length} cached ideas. Context rebuilt fresh.`);
         }
       } else {
         try {
