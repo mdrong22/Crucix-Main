@@ -75,7 +75,7 @@ redline: {
   providers: {
     cerebras: {
       apiKey:  process.env.CEREBRAS_API_KEY  || null,
-      model:   process.env.CEREBRAS_MODEL    || 'llama-3.3-70b',  // 70B — no -instruct suffix on Cerebras
+      model:   process.env.CEREBRAS_MODEL    || 'llama3.3-70b',  // Cerebras format: no dash between llama and version
       baseUrl: 'https://api.cerebras.ai/v1',
     },
     sambanova: {
