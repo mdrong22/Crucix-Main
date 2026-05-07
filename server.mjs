@@ -164,12 +164,14 @@ const memory = new MemoryManager(RUNS_DIR);
 const llmProvider = createLLMProvider(config.llm);
 
 // Groq fallback for LLM ideas — uses config.fallback.apiKey (GROQ_FALLBACK_KEY in .env).
-// llama-3.3-70b-versatile: LPU inference, reliable JSON output, separate API from Gemini.
+// llama-3.1-8b-instant: 500K TPD free tier (vs 100K for 70B) — JSON idea generation doesn't need 70B.
+// Scout uses 70B on a separate budget (GROQ_SCOUT_MODEL). Splitting models prevents ideas from
+// burning Scout's entire daily token allowance before Scout runs.
 const groqIdeasFallback = config.fallback?.apiKey
   ? new OpenAIProvider({
       name:    'groq',
       apiKey:  config.fallback.apiKey,
-      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile',
+      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.1-8b-instant',
       baseUrl: config.redline.phi.baseUrl,
     })
   : null;
@@ -186,15 +188,15 @@ const redLineEnabled = config.redline.enabled
 // Inject shared provider pool into each agent so fallback chains work
 const _providers = config.redline.providers || {};
 
-// Scout gets its own Groq fallback using Phi's API key, NOT the shared GROQ_FALLBACK_KEY.
-// Ideas generation and Scout both need Groq as the last resort — if they share a key they
-// compete for the same 100k TPD bucket. Phi's key is on a separate org/account so it has
-// its own quota pool. Scout debates are sequential (after Ideas), so Phi's key won't clash.
+// Scout fallback: 70B for complex multi-signal analysis, separate env var from ideas.
+// GROQ_SCOUT_MODEL (default: llama-3.3-70b-versatile) is intentionally different from
+// GROQ_IDEAS_MODEL (default: llama-3.1-8b-instant) — they have separate TPD buckets on Groq.
+// If GROQ_API_KEY == GROQ_FALLBACK_KEY they share a budget, but different models = different limits.
 const scoutGroqFallback = config.redline.phi?.apiKey
   ? new OpenAIProvider({
       name:    'groq-scout',
       apiKey:  config.redline.phi.apiKey,
-      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile',
+      model:   process.env.GROQ_SCOUT_MODEL || 'llama-3.3-70b-versatile',
       baseUrl: config.redline.phi.baseUrl,
     })
   : groqIdeasFallback; // same-key fallback if no separate Phi key configured
