@@ -75,7 +75,7 @@ redline: {
   providers: {
     cerebras: {
       apiKey:  process.env.CEREBRAS_API_KEY  || null,
-      model:   process.env.CEREBRAS_MODEL    || 'llama-3.3-70b',  // Cerebras renamed: llama-3.3-70b (hyphen required)
+      model:   process.env.CEREBRAS_MODEL    || 'gpt-oss-120b',  // llama3.3-70b removed; gpt-oss-120b is the current 120B production model (3000 tok/s)
       baseUrl: 'https://api.cerebras.ai/v1',
     },
     sambanova: {
