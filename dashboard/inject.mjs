@@ -689,6 +689,27 @@ export async function synthesize(data) {
       };
     })(),
 
+    sec: (() => {
+      const s = data.sources['SEC-EDGAR'] || {};
+      return {
+        eightKFilings: (s.eight_k_filings || []).slice(0, 8),
+        form4Filings:  (s.form4_filings   || []).slice(0, 8),
+        signals:       s.signals          || [],
+        eightKCount:   s.eight_k_count    || 0,
+        form4Count:    s.form4_count      || 0,
+      };
+    })(),
+    reddit: (() => {
+      const r = data.sources.Reddit || {};
+      if (r.status === 'no_key' || !r.subreddits) return { available: false, wsb: [], stocks: [], ml: [] };
+      const subs = r.subreddits || {};
+      return {
+        available: true,
+        wsb:    (subs.wallstreetbets  || []).filter(p => (p.score || 0) > 5000).slice(0, 5),
+        stocks: (subs.stocks          || []).filter(p => (p.score || 0) > 2000).slice(0, 3),
+        ml:     (subs.MachineLearning || []).filter(p => (p.score || 0) > 1000).slice(0, 3),
+      };
+    })(),
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
