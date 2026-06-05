@@ -14,6 +14,8 @@ import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas, runPortfolioBrief, compactSweepForLLM } from './lib/llm/ideas.mjs';
+import { generateLLMTheses } from './lib/llm/thesis.mjs';
+import { getSetupTechnicals } from './apis/sources/alpaca.mjs';
 import { OpenAIProvider } from './lib/llm/openai.mjs';
 import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
@@ -51,11 +53,31 @@ let sweepInProgress = false;
 let currentContext = null;
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
+let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
+let cachedTheses = [];      // Last derived theses (reused when throttled / across restarts)
 
 // Minimum gap between Ideas LLM calls. Market macro signals don't change every 15 min.
 // At 15-min sweep intervals: 60 min = 4 sweeps skipped between runs (24 calls/day vs 96).
 // Override with IDEAS_INTERVAL_MINUTES in .env.
 const IDEAS_THROTTLE_MS = parseInt(process.env.IDEAS_INTERVAL_MINUTES || '60', 10) * 60 * 1000;
+// Forward-pacing theses move even slower than ideas (megatrends shift over weeks). Default 60 min.
+const THESIS_THROTTLE_MS = parseInt(process.env.THESIS_INTERVAL_MINUTES || '60', 10) * 60 * 1000;
+
+// Thesis persistence — survives restarts so Scout always has the last hunting ground.
+const THESES_PATH = join(RUNS_DIR, 'theses.json');
+function loadThesesFromDisk() {
+  try {
+    if (existsSync(THESES_PATH)) {
+      const j = JSON.parse(readFileSync(THESES_PATH, 'utf8'));
+      if (Array.isArray(j?.theses)) { cachedTheses = j.theses; lastThesisRunAt = j.savedAt || null; }
+    }
+  } catch (e) { console.warn('[Thesis] Could not load cached theses:', e.message); }
+}
+function saveThesesToDisk(theses) {
+  try { writeFileSync(THESES_PATH, JSON.stringify({ savedAt: Date.now(), theses }, null, 2)); }
+  catch (e) { console.warn('[Thesis] Could not persist theses:', e.message); }
+}
+loadThesesFromDisk();
 
 // Returns true if current time is within the active trading window (ET).
 // Scout scans for NEW entries — no point running when the market is closed.
@@ -728,6 +750,42 @@ async function runSweepCycle() {
       synthesized.ideasSource = 'disabled';
     }
 
+    // 5b. Forward-pacing THESES — auto-derived megatrend → unpriced-rung map (throttled like ideas).
+    // The thesis is the hunting ground; Scout's setup scan (getSetupTechnicals) pulls the trigger.
+    if (llmProvider?.isConfigured) {
+      const thesisElapsed   = lastThesisRunAt ? Date.now() - lastThesisRunAt : Infinity;
+      const thesisThrottled = thesisElapsed < THESIS_THROTTLE_MS;
+      const criticalChg     = delta?.summary?.criticalChanges ?? 0;
+      const totalChg        = delta?.summary?.totalChanges    ?? 0;
+      const thesisDeltaQuiet = criticalChg === 0 && totalChg < 3;
+      if (thesisThrottled || thesisDeltaQuiet) {
+        synthesized.theses = cachedTheses;
+        if (cachedTheses.length) console.log(`[Thesis] Reusing ${cachedTheses.length} cached theses (${thesisThrottled ? 'throttled' : 'delta quiet'}).`);
+      } else {
+        try {
+          const newTheses = await generateLLMTheses(llmProvider, synthesized, delta, cachedTheses, groqIdeasFallback);
+          if (newTheses?.length) {
+            cachedTheses    = newTheses;
+            lastThesisRunAt = Date.now();
+            saveThesesToDisk(newTheses);
+          }
+          synthesized.theses = cachedTheses; // fall back to prior on a null result
+        } catch (thErr) {
+          console.error('[Thesis] Generation failed (non-fatal):', thErr.message);
+          synthesized.theses = cachedTheses;
+        }
+      }
+    } else {
+      synthesized.theses = [];
+    }
+
+    // 5c. SPY reference for relative-strength in the setup scan — fetched ONCE per sweep,
+    // passed to Scout via currentData so per-ticker setup calls don't each re-fetch SPY.
+    try {
+      const spySetup = await getSetupTechnicals('SPY');
+      synthesized.spyRef = spySetup ? { ret1m: spySetup.ret1m, ret3m: spySetup.ret3m } : null;
+    } catch { synthesized.spyRef = null; }
+
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
       if (telegramAlerter.isConfigured) {
@@ -883,10 +941,12 @@ async function CheckDebateCycle(context) {
       const unitsToSellMatch = result.match(/Units_To_Sell[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
       const unitsRemainingMatch = result.match(/Units_Remaining[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
       const scenarioMatch    = result.match(/Scenario:\s*(UNDERWATER|PARTIAL[_\s]EXIT|PROFIT[_\s]TAKE|BREAKEVEN[_\s]EXIT)/i);
+      const currentUnitsMatch = result.match(/Current_Units[^:]*:\s*([\d.]+)/i);
       const sellTarget       = sellTargetMatch    ? parseFloat(sellTargetMatch[1])    : null;
       const reentryTarget    = reentryMatch       ? parseFloat(reentryMatch[1])       : null;
       const unitsToSell      = unitsToSellMatch   ? parseFloat(unitsToSellMatch[1])   : null;
       const unitsRemaining   = unitsRemainingMatch? parseFloat(unitsRemainingMatch[1]): null;
+      const currentUnits     = currentUnitsMatch  ? parseFloat(currentUnitsMatch[1])  : null;
       let scenario           = scenarioMatch?.[1]?.toUpperCase().replace(/[\s]/, '_') || 'UNDERWATER';
 
       // ── PARTIAL_EXIT overflow guard ──────────────────────────────────────────
@@ -894,9 +954,7 @@ async function CheckDebateCycle(context) {
       // requires more shares than exist in the account. PARTIAL_EXIT is impossible —
       // force a full exit (BREAKEVEN_EXIT) and log the reason.
       if (scenario === 'PARTIAL_EXIT' && unitsToSell != null) {
-          const cleanedPort = []; // will be re-fetched in beginDebate — check against Scout's reported units
-          const currentUnitsMatch = result.match(/Current_Units[^:]*:\s*([\d.]+)/i);
-          const reportedHeld = currentUnitsMatch ? parseFloat(currentUnitsMatch[1]) : null;
+          const reportedHeld = currentUnits;
           if (reportedHeld != null && unitsToSell > reportedHeld + 0.0001) {
               console.warn(`[REDLINE] ⚠ PARTIAL_EXIT overflow — Scout's Units_To_Sell (${unitsToSell}) > held units (${reportedHeld}). Price dropped too far for cost-basis recovery. Forcing BREAKEVEN_EXIT (full exit).`);
               scenario = 'BREAKEVEN_EXIT';
@@ -968,21 +1026,42 @@ async function CheckDebateCycle(context) {
           }
           // Hard-enforce GTC Limit — TRADE AROUND is never a market dump
           if (trade.action === 'SELL') {
+              // ── SYMBOL GUARD (critical) ──────────────────────────────────────
+              // TRADE AROUND is a mechanical exit of a KNOWN held position (taTicker from Scout).
+              // Gregor must NOT be able to change the symbol. On 2026-06-03 Gregor hallucinated
+              // a SELL for ITA during a BA exit debate — the order nearly sold a different position
+              // at BA's price. The symbol is structural data from Scout, not a Gregor decision.
+              if (trade.symbol && trade.symbol.toUpperCase() !== taTicker) {
+                  console.error(`[REDLINE] 🛑 SYMBOL HALLUCINATION BLOCKED — Gregor output SELL ${trade.symbol} during a ${taTicker} TRADE AROUND debate. Overriding symbol → ${taTicker} (the actual held position). Gregor does not choose the symbol in exit mode.`);
+              }
+              trade.symbol        = taTicker;
               trade.order_type    = 'Limit';
               trade.time_in_force = 'GTC';
               // Always use Scout's sell target — Gregor's no-candle pricing rules are irrelevant here
               if (sellTarget) trade.price = sellTarget;
 
-              // PARTIAL_EXIT: hard-clamp units to Scout's calculated recovery amount.
-              // Gregor may output all units — mechanical override ensures only the
-              // cost-recovery portion is sold, leaving the free-ride remainder intact.
-              if (isPartialExit && unitsToSell != null) {
-                  if (trade.units == null || Math.abs(trade.units - unitsToSell) > 0.001) {
-                      console.log(`[REDLINE] 🎯 PARTIAL_EXIT unit clamp: ${trade.symbol} — overriding Gregor's ${trade.units ?? 'null'} units → ${unitsToSell} (cost-recovery amount). Remainder: ${unitsRemaining ?? '?'} free-ride shares stay.`);
-                      trade.units = unitsToSell;
+              // ── UNITS: always from Scout's structured output, never Gregor's verdict ──
+              // PARTIAL_EXIT → unitsToSell (cost-recovery amount, leaves free-ride remainder).
+              // Full exits   → currentUnits (sell entire held position) if Scout reported it,
+              //                else unitsToSell. Gregor's unit count is never trusted in exit mode.
+              const scoutUnits = isPartialExit
+                  ? unitsToSell
+                  : (currentUnits ?? unitsToSell);
+              if (scoutUnits != null) {
+                  if (trade.units == null || Math.abs(trade.units - scoutUnits) > 0.001) {
+                      console.log(`[REDLINE] 🎯 ${scenario} unit override: ${taTicker} — Gregor said ${trade.units ?? 'null'}, using Scout's ${scoutUnits} units${isPartialExit ? ` (cost-recovery; ${unitsRemaining ?? '?'} free-ride stay)` : ' (full held position)'}.`);
                   }
-                  // Fractional partial sells must use Day tif per SnapTrade rules
-                  if (!Number.isInteger(unitsToSell)) trade.time_in_force = 'Day';
+                  trade.units = scoutUnits;
+              }
+
+              // ── FRACTIONAL → DAY (applies to ALL exit scenarios) ─────────────
+              // SnapTrade rejects fractional GTC orders ("fractional orders must be DAY orders").
+              // Previously this only ran for PARTIAL_EXIT — full exits with fractional units
+              // (e.g. 0.000041 share dust positions) failed with code 1119. Fix: check units
+              // regardless of scenario.
+              if (trade.units != null && !Number.isInteger(trade.units)) {
+                  trade.time_in_force = 'Day';
+                  console.log(`[REDLINE] 📋 Fractional units (${trade.units}) → time_in_force forced to Day (SnapTrade rule: fractional cannot be GTC).`);
               }
           }
 

@@ -42,6 +42,7 @@ import { briefing as space } from './sources/space.mjs';
 
 // === Tier 5: Live Market Data ===
 import { briefing as yfinance } from './sources/yfinance.mjs';
+import { briefing as movers }   from './sources/movers.mjs';      // FMP biggest losers/gainers screener
 
 // === Tier 6: Cyber & Infrastructure ===
 import { briefing as cisaKev } from './sources/cisa-kev.mjs';
@@ -49,6 +50,7 @@ import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
 
 // === Tier 7: Congressional & Insider Trading ===
 import { briefing as congress } from './sources/congress.mjs';
+import { briefing as policy }   from './sources/policy.mjs';      // Presidential/executive actions (Federal Register)
 
 // === Tier 8: Financial & Tech News Intelligence ===
 import { briefing as hackernews } from './sources/hackernews.mjs';
@@ -81,7 +83,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 37 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 39 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -121,6 +123,7 @@ export async function fullBriefing() {
 
     // Tier 5: Live Market Data
     runSource('YFinance', yfinance),
+    runSource('Movers',   movers),                                // FMP_API_KEY optional — market-wide dislocations
 
     // Tier 6: Cyber & Infrastructure
     runSource('CISA-KEV', cisaKev),
@@ -128,6 +131,7 @@ export async function fullBriefing() {
 
     // Tier 7: Congressional & Insider Trading
     runSource('Congress', congress),
+    runSource('Policy',   policy),                                // no key — executive orders + significant rules
 
     // Tier 8: Financial & Tech News Intelligence
     runSource('HackerNews', hackernews),                          // no key — always active

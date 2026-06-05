@@ -710,7 +710,30 @@ export async function synthesize(data) {
         ml:     (subs.MachineLearning || []).filter(p => (p.score || 0) > 1000).slice(0, 3),
       };
     })(),
+    // Presidential / executive actions — top of Scout's macro→sector→stock funnel
+    policy: (() => {
+      const p = data.sources.Policy || {};
+      return {
+        executiveOrders: (p.executiveOrders || []).slice(0, 6),
+        rules:           (p.rules           || []).slice(0, 5),
+        signals:         p.signals          || [],
+      };
+    })(),
+    // Market-wide dislocation screener (FMP) — biggest losers/gainers
+    movers: (() => {
+      const m = data.sources.Movers || {};
+      if (m.status === 'no_key') return { available: false, losers: [], gainers: [], active: [], signals: [] };
+      return {
+        available: true,
+        losers:  (m.losers  || []).slice(0, 10),
+        gainers: (m.gainers || []).slice(0, 10),
+        active:  (m.active  || []).slice(0, 8),
+        signals: m.signals  || [],
+      };
+    })(),
     ideas: [], ideasSource: 'disabled',
+    theses: [], // forward-pacing megatrend theses — populated post-synthesize in server.mjs
+    spyRef: null, // SPY 1m/3m returns for relative-strength in the setup scan
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
   };
