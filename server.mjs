@@ -31,6 +31,7 @@ import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
+import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -1004,12 +1005,17 @@ async function acceptProposal(id, ctx) {
     return 'Order failed';
   }
 
-  setStatus(id, 'EXECUTED', { orderId: orderRes?.brokerage_order_id || orderRes?.id || null });
+  const orderId = orderRes?.brokerage_order_id || orderRes?.id || null;
+  setStatus(id, 'EXECUTED', { orderId });
   try {
     const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
       ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price ?? 'N/A';
     logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null });
   } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
+
+  // Per-trade report for the dashboard report viewer (restored for the single-agent model).
+  try { generateTradeReport(p, { auto: !!ctx?.auto, orderId }); }
+  catch (err) { console.error('[TradeReport] generation failed:', err.message); }
 
   setCycle(ctx?.auto ? 'AUTO_EXECUTED' : 'EXECUTED', `${trade.action} ${trade.symbol} placed`, { ticker: trade.symbol });
   // News-channel alert only for AUTO-trades — a manual Accept already edits its own card to ✅,
