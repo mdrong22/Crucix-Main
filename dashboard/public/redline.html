@@ -366,6 +366,47 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   <div class="layout">
     <div class="col-main">
 
+      <style>
+      .cyc-panel{margin-bottom:14px}
+      .cyc-track{display:flex;align-items:flex-start;padding:18px 10px 6px}
+      .cyc-step{flex:0 0 118px;display:flex;flex-direction:column;align-items:center;text-align:center}
+      .cyc-bar{flex:1 1 auto;height:2px;margin-top:19px;background:rgba(255,120,60,.14);position:relative;overflow:hidden;border-radius:2px}
+      .cyc-bar.done{background:rgba(255,107,26,.55)}
+      .cyc-bar.active::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,34,68,.95),transparent);animation:cycflow 1.1s linear infinite}
+      @keyframes cycflow{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+      .cyc-dot{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 11px 'IBM Plex Mono',monospace;border:2px solid rgba(255,120,60,.22);color:rgba(255,150,90,.4);background:rgba(20,8,4,.55);transition:.3s}
+      .cyc-step.done .cyc-dot{border-color:rgba(255,107,26,.85);color:#ffb37a;box-shadow:0 0 9px rgba(255,107,26,.45)}
+      .cyc-step.active .cyc-dot{border-color:#ff2244;color:#fff;animation:cycpulse 1.3s ease-in-out infinite}
+      @keyframes cycpulse{0%,100%{box-shadow:0 0 9px rgba(255,34,68,.5)}50%{box-shadow:0 0 22px rgba(255,34,68,.95)}}
+      .cyc-step.stopped .cyc-dot{border-color:rgba(150,150,150,.4);color:rgba(170,170,170,.55)}
+      .cyc-name{margin-top:8px;font:700 9.5px 'IBM Plex Mono',monospace;letter-spacing:.5px;color:rgba(255,150,90,.42)}
+      .cyc-step.done .cyc-name,.cyc-step.active .cyc-name{color:#ffd0a8}
+      .cyc-sub{margin-top:3px;font-size:9px;opacity:.6;min-height:11px;max-width:112px;color:#ff8a4a}
+      .cyc-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 12px 12px;border-top:1px solid rgba(255,120,60,.1);flex-wrap:wrap}
+      .cyc-status{font:600 12px 'IBM Plex Mono',monospace;color:#ffb37a}
+      .cyc-meta{display:flex;gap:14px;font-size:10px;opacity:.75;flex-wrap:wrap}
+      .cyc-meta b{color:#ff8a4a;font-weight:700}
+      </style>
+      <div class="panel cyc-panel">
+        <div class="panel-head">
+          <div class="panel-title">◈ DECISION CYCLE</div>
+          <div class="panel-badge" id="cycBadge">—</div>
+        </div>
+        <div class="cyc-track">
+          <div class="cyc-step" data-step="1"><div class="cyc-dot">01</div><div class="cyc-name">NEW SIGNALS</div><div class="cyc-sub" id="cycSub1"></div></div>
+          <div class="cyc-bar" data-bar="1"></div>
+          <div class="cyc-step" data-step="2"><div class="cyc-dot">02</div><div class="cyc-name">CLAUDE DECIDING</div><div class="cyc-sub" id="cycSub2"></div></div>
+          <div class="cyc-bar" data-bar="2"></div>
+          <div class="cyc-step" data-step="3"><div class="cyc-dot">03</div><div class="cyc-name">PROPOSAL</div><div class="cyc-sub" id="cycSub3"></div></div>
+          <div class="cyc-bar" data-bar="3"></div>
+          <div class="cyc-step" data-step="4"><div class="cyc-dot">04</div><div class="cyc-name">ACCEPT / DENY</div><div class="cyc-sub" id="cycSub4"></div></div>
+        </div>
+        <div class="cyc-foot">
+          <div class="cyc-status" id="cycStatus">Awaiting first sweep…</div>
+          <div class="cyc-meta" id="cycMeta"></div>
+        </div>
+      </div>
+
       <div class="pf-header">
         <div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
 
@@ -999,9 +1040,47 @@ function toggleHorizon(h){
   saveSettings({investmentTypes:[...set]});
 }
 
+// ── DECISION CYCLE panel
+const CYC={IDLE:{a:0,d:0},SIGNALS:{a:1,d:0},QUIET:{a:0,d:1,dim:1},DECIDING:{a:2,d:1},NO_ACTION:{a:0,d:2,dim:1},AWAITING:{a:4,d:3},EXECUTED:{a:0,d:4},AUTO_EXECUTED:{a:0,d:4},DENIED:{a:0,d:4,no:1},EXPIRED:{a:0,d:3,dim:1}};
+const CYC_LBL={IDLE:'IDLE',SIGNALS:'SCANNING',QUIET:'QUIET',DECIDING:'DECIDING',NO_ACTION:'NO TRADE',AWAITING:'AWAITING YOU',EXECUTED:'EXECUTED',AUTO_EXECUTED:'AUTO-TRADED',DENIED:'DENIED',EXPIRED:'EXPIRED'};
+function cycAgo(ts){if(!ts)return'—';const s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';const m=Math.floor(s/60);return m<60?m+'m ago':Math.floor(m/60)+'h ago';}
+function cycIn(ts){if(!ts)return'—';const s=Math.floor((ts-Date.now())/1000);if(s<=0)return'now';return s<60?s+'s':Math.floor(s/60)+'m '+(s%60)+'s';}
+async function loadCycle(){
+  try{
+    const r=await fetch('/api/cycle');if(!r.ok)return;const c=await r.json();
+    const m=CYC[c.stage]||CYC.IDLE;
+    for(let i=1;i<=4;i++){
+      const step=document.querySelector('.cyc-step[data-step="'+i+'"]');if(!step)continue;
+      step.classList.remove('active','done','stopped');
+      if(i===m.a)step.classList.add('active');
+      else if(i<=m.d)step.classList.add(m.no&&i===4?'stopped':'done');
+      else if(m.dim)step.classList.add('stopped');
+    }
+    for(let b=1;b<=3;b++){
+      const bar=document.querySelector('.cyc-bar[data-bar="'+b+'"]');if(!bar)continue;
+      bar.classList.remove('done','active');
+      if(b<=m.d)bar.classList.add('done');
+      if(m.a&&b===m.a-1)bar.classList.add('active');
+    }
+    const tick=['AWAITING','EXECUTED','AUTO_EXECUTED','DENIED'].includes(c.stage)?(c.ticker||''):'';
+    document.getElementById('cycSub1').textContent=c.sourcesOk!=null?c.sourcesOk+'/'+c.sourcesTotal+' src':'';
+    document.getElementById('cycSub2').textContent=c.stage==='DECIDING'?'thinking…':'';
+    document.getElementById('cycSub3').textContent=tick;
+    document.getElementById('cycSub4').textContent=tick;
+    document.getElementById('cycBadge').textContent=CYC_LBL[c.stage]||c.stage;
+    document.getElementById('cycStatus').textContent=c.detail||CYC_LBL[c.stage]||'—';
+    document.getElementById('cycMeta').innerHTML=
+      'Last sweep <b>'+cycAgo(c.lastSweepAt)+'</b> · Next <b>'+cycIn(c.nextSweepAt)+'</b>'+
+      ' · Buys today <b>'+c.proposalsToday+'/'+(c.dailyCap||'∞')+'</b>'+
+      ' · Mode '+(c.autoTrade?'<b style="color:#ff2244">⚡ AUTO</b>':'<b>✋ MANUAL</b>');
+  }catch(e){}
+}
+
 loadAll();
 loadReports();
 loadSettings();
+loadCycle();
+setInterval(loadCycle,3000);
 setInterval(()=>loadAll(),5*60*1000);
 setInterval(()=>loadReports(),2*60*1000); // refresh report list every 2 min
 setInterval(()=>loadSettings(),30*1000);  // keep settings in sync across devices

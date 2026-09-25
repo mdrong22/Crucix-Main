@@ -5,6 +5,9 @@ import "./apis/utils/env.mjs"; // Load .env first
 export default {
   port: parseInt(process.env.PORT) || 3117,
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
+  // Max NEW_BUY proposals surfaced per day (quality over quantity — avoids overtrading).
+  // Exits/maintenance are exempt. Set to 0 to disable the cap.
+  maxProposalsPerDay: parseInt(process.env.MAX_PROPOSALS_PER_DAY ?? '3', 10),
 
   llm: {
     provider:      process.env.LLM_PROVIDER        || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
@@ -15,11 +18,12 @@ export default {
   },
 
   // Single trading agent ("Claude") — reviews each sweep and proposes ONE trade for Accept/Deny.
-  // Cheaper-but-smart default (Claude Haiku). Point AGENT_MODEL at any Anthropic model.
+  // Default runs on your Claude Code SUBSCRIPTION via the `claude` CLI (no API credits): requires
+  // `claude login` on the host. Set AGENT_PROVIDER=anthropic to use the pay-per-token API instead.
   agent: {
-    provider: process.env.AGENT_PROVIDER || 'anthropic',
-    apiKey:   process.env.ANTHROPIC_API_KEY || null,
-    model:    process.env.AGENT_MODEL || 'claude-haiku-4-5',
+    provider: process.env.AGENT_PROVIDER || 'claude-code',
+    apiKey:   process.env.ANTHROPIC_API_KEY || null,  // only used when AGENT_PROVIDER=anthropic
+    model:    process.env.AGENT_MODEL || 'haiku',     // 'haiku' (lighter quota) | 'sonnet' (stronger) | full id
   },
 
   telegram: {

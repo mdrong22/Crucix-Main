@@ -22,7 +22,7 @@ import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 // Single-agent proposal system (replaces the Scout/Phi/Theta/Gregor council + debate.mjs).
 import { generateProposal } from './lib/llm/analyst.mjs';
-import { createProposal, getProposal, getPending, setStatus, attachMessageId, expireStale, hasPendingForTicker } from './lib/proposals/store.mjs';
+import { createProposal, getProposal, getPending, setStatus, attachMessageId, expireStale, hasPendingForTicker, countToday } from './lib/proposals/store.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
@@ -51,6 +51,13 @@ let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from aler
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
 let cachedTheses = [];      // Last derived theses (reused when throttled / across restarts)
+
+// ── Decision-cycle status (drives the RedLine "DECISION CYCLE" panel) ──────────
+// stage: SIGNALS → DECIDING → (NO_ACTION | QUIET | AWAITING | EXECUTED | AUTO_EXECUTED | DENIED | EXPIRED)
+let cycleStatus = { stage: 'IDLE', detail: '', ticker: null, at: null, lastSweepAt: null, nextSweepAt: null };
+function setCycle(stage, detail = '', extra = {}) {
+  cycleStatus = { ...cycleStatus, stage, detail, at: Date.now(), ...extra };
+}
 
 // Minimum gap between Ideas LLM calls. Market macro signals don't change every 15 min.
 // At 15-min sweep intervals: 60 min = 4 sweeps skipped between runs (24 calls/day vs 96).
@@ -445,6 +452,24 @@ app.post('/api/settings', express.json(), (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Decision-cycle status for the RedLine "DECISION CYCLE" panel.
+app.get('/api/cycle', (req, res) => {
+  try {
+    const s = getSettings();
+    res.json({
+      ...cycleStatus,
+      sourcesOk:      currentData?.meta?.sourcesOk ?? null,
+      sourcesTotal:   currentData?.meta?.sourcesQueried ?? null,
+      proposalsToday: countToday('NEW_BUY'),
+      dailyCap:       config.maxProposalsPerDay || 0,
+      autoTrade:      s.autoTrade,
+      investmentTypes: s.investmentTypes,
+      refreshMinutes: config.refreshIntervalMinutes,
+      serverTime:     Date.now(),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // List all reports (.html and .md for inline viewing; .docx listed for download)
 app.get('/api/reports', (req, res) => {
   try {
@@ -536,6 +561,7 @@ async function runSweepCycle() {
 
   sweepInProgress = true;
   sweepStartedAt = new Date().toISOString();
+  setCycle('SIGNALS', 'Gathering intelligence…', { lastSweepAt: Date.now(), ticker: null });
   broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
@@ -700,8 +726,10 @@ async function runSweepCycle() {
 
       if (isQuietDelta) {
         console.log(`[PROPOSAL] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Agent skipped.`);
+        setCycle('QUIET', `Quiet — ${totalChanges} changes, nothing actionable`);
       } else if (!inWindow && openPositionCount === 0) {
         console.log(`[PROPOSAL] 🌙 Market closed — agent skipped (no open positions). Next window: 9:00 AM ET.`);
+        setCycle('QUIET', 'Market closed — standing by');
       } else {
         if (!inWindow && openPositionCount > 0) {
           console.log(`[PROPOSAL] 🌙 Market closed but ${openPositionCount} open position(s) — agent running for portfolio monitoring.`);
@@ -711,7 +739,8 @@ async function runSweepCycle() {
         await runProposalCycle(currentContext);
       }
     }
-    console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
+    cycleStatus.nextSweepAt = Date.now() + config.refreshIntervalMinutes * 60000;
+    console.log(`[Crucix] Next sweep at ${new Date(cycleStatus.nextSweepAt).toLocaleTimeString()}`);
 
 
   } catch (err) {
@@ -813,13 +842,25 @@ async function runProposalCycle(context) {
   // RedLine-page settings: Auto Trade toggle + allowed investment horizons.
   const settings = getSettings();
 
-  // 3. Single agent → at most one proposal, constrained to the allowed horizons.
+  // Daily new-buy budget — quality over quantity. Maintenance/exits are exempt.
+  const dailyCap    = config.maxProposalsPerDay || 0;              // 0 = disabled
+  const buysToday   = countToday('NEW_BUY');
+  const buysLeft    = dailyCap > 0 ? Math.max(0, dailyCap - buysToday) : Infinity;
+  if (dailyCap > 0 && buysLeft === 0) {
+    // No new-buy budget left today, but still let the agent surface urgent MAINTENANCE.
+    console.log(`[PROPOSAL] Daily new-buy cap reached (${buysToday}/${dailyCap}) — new entries paused, maintenance still active.`);
+  }
+
+  // 3. Single agent → at most one proposal, constrained to the allowed horizons + daily budget.
+  setCycle('DECIDING', 'Claude reviewing the sweep…');
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
-    buyingPower, remaining, priorPending, groqIdeasFallback, settings.investmentTypes
+    buyingPower, remaining, priorPending, groqIdeasFallback, settings.investmentTypes,
+    { buysLeft, buysToday, dailyCap }
   );
   if (!proposal || proposal.action === 'NO_ACTION') {
     console.log(`[PROPOSAL] No proposal this cycle${proposal?.desc ? ` — ${proposal.desc}` : ''}.`);
+    setCycle('NO_ACTION', (proposal?.desc || 'No trade worth proposing this cycle').slice(0, 140));
     return;
   }
 
@@ -827,6 +868,12 @@ async function runProposalCycle(context) {
   //     MAINTENANCE/exits are always allowed — you must be able to manage what you already hold).
   if (proposal.action === 'NEW_BUY' && proposal.horizon && !settings.investmentTypes.includes(proposal.horizon)) {
     console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${settings.investmentTypes.join(',')}].`);
+    return;
+  }
+
+  // 4a2. Hard daily cap — a NEW_BUY beyond the day's budget is dropped (exits/maintenance exempt).
+  if (proposal.action === 'NEW_BUY' && dailyCap > 0 && buysToday >= dailyCap) {
+    console.log(`[PROPOSAL] Dropped — ${proposal.ticker}: daily new-buy cap ${buysToday}/${dailyCap} already reached.`);
     return;
   }
 
@@ -845,6 +892,7 @@ async function runProposalCycle(context) {
       `🤖 *AUTO-TRADE (no approval)*\n${formatProposalCard(rec)}`,
       { chatId: telegramAlerter.proposalsChatId }
     );
+    setCycle('AUTO_EXECUTED', `${rec.action} ${rec.ticker} — auto-traded (no approval)`, { ticker: rec.ticker });
     await acceptProposal(rec.id, { chatId: telegramAlerter.proposalsChatId, auto: true });
     return;
   }
@@ -858,6 +906,7 @@ async function runProposalCycle(context) {
     chatId: telegramAlerter.proposalsChatId, replyMarkup,
   });
   if (sent?.messageId) attachMessageId(rec.id, sent.messageId);
+  setCycle('AWAITING', `${rec.action} ${rec.ticker} — awaiting your Accept/Deny`, { ticker: rec.ticker });
   console.log(`[PROPOSAL] 📬 Sent ${rec.action} ${rec.ticker} (expires ${rec.expiresAt}) — awaiting Accept/Deny.`);
 }
 
@@ -931,6 +980,7 @@ async function acceptProposal(id, ctx) {
     logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null });
   } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
 
+  setCycle(ctx?.auto ? 'AUTO_EXECUTED' : 'EXECUTED', `${trade.action} ${trade.symbol} placed`, { ticker: trade.symbol });
   telegramAlerter.sendTradeAlert?.(trade);
   await telegramAlerter.editMessageText(p.telegramMessageId,
     `✅ *${p.title}* — EXECUTED\n${trade.action} ${trade.symbol} @ ${trade.price ? `$${trade.price}` : trade.order_type} placed.`,
@@ -944,6 +994,7 @@ async function denyProposal(id, ctx) {
   if (!p) return 'Not found';
   if (p.status !== 'PENDING') return `Already ${p.status.toLowerCase()}`;
   setStatus(id, 'DENIED');
+  setCycle('DENIED', `${p.ticker} — you denied it`, { ticker: p.ticker });
   await telegramAlerter.editMessageText(p.telegramMessageId,
     `❌ *${p.title}* — DENIED\nNo order placed.`, { chatId: ctx?.chatId });
   console.log(`[PROPOSAL] ❌ Denied — ${p.ticker}`);
