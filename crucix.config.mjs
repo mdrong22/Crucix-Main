@@ -51,9 +51,12 @@ export default {
     authId: process.env.SNAPTRADE_AUTH_ID || null ,
   },
 
-  // Groq fallback — used when primary Gemini models fail for LLM ideas generation
+  // Groq fallback — used when primary Gemini models fail for LLM ideas generation.
+  // baseUrl MUST point at Groq's OpenAI-compatible endpoint; otherwise the OpenAIProvider
+  // defaults to api.openai.com and a Groq key + Llama model 404s ("model does not exist").
   fallback: {
-    apiKey: process.env.GROQ_FALLBACK_KEY || null,
+    apiKey:  process.env.GROQ_FALLBACK_KEY || null,
+    baseUrl: process.env.GROQ_FALLBACK_BASE_URL || 'https://api.groq.com/openai/v1',
   },
 
 redline: {

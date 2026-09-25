@@ -128,7 +128,7 @@ const groqIdeasFallback = config.fallback?.apiKey
       name:    'groq',
       apiKey:  config.fallback.apiKey,
       model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile', // 8b-instant was decommissioned on Groq
-      baseUrl: config.redline.phi.baseUrl,
+      baseUrl: config.fallback.baseUrl,  // Groq endpoint — NOT phi's (which was unset → hit OpenAI → 404)
     })
   : null;
 if (groqIdeasFallback?.isConfigured) {
