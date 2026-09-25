@@ -146,8 +146,13 @@ const redLineEnabled = config.redline.enabled
 const agentProvider = createLLMProvider(config.agent);
 if (agentProvider?.isConfigured) {
   console.log(`[Crucix] Analyst agent ready: ${config.agent.provider} / ${agentProvider.model}`);
+  // Boot self-check — ping the agent once so a login/quota problem is obvious immediately,
+  // instead of surfacing only on the first real sweep. Non-blocking.
+  agentProvider.complete('Reply with only the word OK.', 'ping', { timeout: 45000, maxTokens: 16 })
+    .then(r => console.log(`[Crucix] ✅ Agent self-check passed (${config.agent.provider}) — replied "${String(r.text).trim().slice(0, 20)}"`))
+    .catch(e => console.warn(`[Crucix] ⚠ Agent self-check FAILED — ${e.message}\n           → proposals will use the Gemini fallback until this is resolved.`));
 } else {
-  console.warn('[Crucix] Analyst agent NOT configured (set ANTHROPIC_API_KEY + config.agent). Proposals disabled.');
+  console.warn('[Crucix] Analyst agent NOT configured. Proposals will use the fallback provider.');
 }
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
@@ -602,11 +607,11 @@ async function runSweepCycle() {
       const ideasDeltaQuiet = criticalChg === 0 && totalChg < 3 && newSignals === 0;
 
       if (ideasThrottled || ideasDeltaQuiet) {
-        // Reuse previous ideas — preserve context for Scout debate
+        // Reuse previous ideas — preserve context for the dashboard/agent (no LLM call)
         const lastRun = memory.getLastRun();
         synthesized.ideas = lastRun?.ideas || [];
         synthesized.ideasSource = 'cached';
-        // Always rebuild context from fresh sweep data so Scout sees current news
+        // Always rebuild context from fresh sweep data so the agent sees current news
         // even when the ideas LLM call is throttled (context ≠ ideas — no LLM needed here)
         currentContext = compactSweepForLLM(synthesized, delta, synthesized.ideas);
         if (ideasThrottled) {
@@ -721,21 +726,18 @@ async function runSweepCycle() {
       // Delta gate: skip when no open positions AND nothing significant changed.
       const isQuietDelta = openPositionCount === 0 && criticalChanges === 0 && totalChanges < 3 && newSignals === 0;
 
-      // Market-hours gate: new-entry proposals only apply during market hours.
-      // If market is closed AND there are no open positions to monitor, skip entirely.
-      // If there ARE open positions to manage, always run so maintenance can be proposed.
+      // Market-hours gate: we don't trade after hours, so there's no point spending an LLM call on a
+      // proposal that couldn't be acted on. Hard stop-losses still run on their own watcher.
       const inWindow = isMarketWindow();
 
-      if (isQuietDelta) {
+      if (!inWindow) {
+        console.log(`[PROPOSAL] 🌙 Market closed — no LLM call (we don't trade after hours). Stop-losses still active. Next window: 9:00 AM ET.`);
+        setCycle('QUIET', 'Market closed — standing by (no after-hours trading)');
+      } else if (isQuietDelta) {
         console.log(`[PROPOSAL] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Agent skipped.`);
         setCycle('QUIET', `Quiet — ${totalChanges} changes, nothing actionable`);
-      } else if (!inWindow && openPositionCount === 0) {
-        console.log(`[PROPOSAL] 🌙 Market closed — agent skipped (no open positions). Next window: 9:00 AM ET.`);
-        setCycle('QUIET', 'Market closed — standing by');
       } else {
-        if (!inWindow && openPositionCount > 0) {
-          console.log(`[PROPOSAL] 🌙 Market closed but ${openPositionCount} open position(s) — agent running for portfolio monitoring.`);
-        } else if (openPositionCount > 0) {
+        if (openPositionCount > 0) {
           console.log(`[PROPOSAL] Agent running — ${openPositionCount} open position(s) to monitor.`);
         }
         await runProposalCycle(currentContext);
