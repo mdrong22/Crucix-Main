@@ -12,7 +12,7 @@ import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs'
 import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
-import { createLLMProvider, GeminiProvider } from './lib/llm/index.mjs';
+import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas, runPortfolioBrief, compactSweepForLLM } from './lib/llm/ideas.mjs';
 import { generateLLMTheses } from './lib/llm/thesis.mjs';
 import { getSetupTechnicals } from './apis/sources/alpaca.mjs';
@@ -20,20 +20,16 @@ import { OpenAIProvider } from './lib/llm/openai.mjs';
 import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
-import { ScoutLLM } from './lib/llm/council/scout.mjs';
-import { ScribePrompt } from './lib/llm/council/utils/prompts.mjs';
-import { generateLocalReport } from './lib/llm/council/utils/generateReport.mjs';
-import { Debate } from './lib/alerts/debate.mjs';
-import { PhiLLM } from './lib/llm/council/phi.mjs';
-import { ThetaLLM } from './lib/llm/council/theta.mjs';
-import { GregorLLM } from './lib/llm/council/omega.mjs';
+// Single-agent proposal system (replaces the Scout/Phi/Theta/Gregor council + debate.mjs).
+import { generateProposal } from './lib/llm/analyst.mjs';
+import { createProposal, getProposal, getPending, setStatus, attachMessageId, expireStale, hasPendingForTicker } from './lib/proposals/store.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
 import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
-import { EarningsWatcher } from './lib/alerts/earningsWatcher.mjs';
+import { getSettings, updateSettings } from './lib/settings/store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -90,76 +86,6 @@ function isMarketWindow() {
   return h >= 9.0 && h <= 16.5;                       // 9:00 AM – 4:30 PM ET
 }
 
-// Extracts only the structured labeled fields from Scout's briefing output.
-// Gives the Scribe all analytical data in ~400 chars instead of 1500+,
-// without blindly slicing mid-sentence.
-function extractScoutSummary(raw) {
-  const fields = [
-    // ESCALATING fields
-    'Ticker', 'Horizon', 'Play Type', 'Signal Score', 'Congressional Signal',
-    'Rotation_Target', 'Trigger', 'The Data', 'The Story', "Scout's Note", 'Compliance',
-    // DEFENSIVE fields
-    'Threat', 'Urgency', 'Exit_Before', 'Thesis_Expiry',
-  ];
-  const lines = [];
-
-  const target = raw.match(/PRIMARY_TARGET:\s*([A-Z]{1,5})/);
-  const vix    = raw.match(/VIX:\s*([\d.]+|N\/A)/);
-  if (target) lines.push(`Target: ${target[1]}`);
-  if (vix)    lines.push(`VIX: ${vix[1]}`);
-
-  for (const f of fields) {
-    const escaped = f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`\\*{0,2}${escaped}[:\\*]{1,3}\\s*(.+)`, 'i');
-    const m  = raw.match(re);
-    if (m && !lines.some(l => l.startsWith(f))) {
-      lines.push(`${f}: ${m[1].trim().replace(/\*\*/g, '')}`);
-    }
-  }
-
-  // Fall back to char-slice if extraction yielded too little (e.g. QUIET output)
-  return lines.length >= 3
-    ? `[SCOUT BRIEFING]\n${lines.join('\n')}`
-    : raw.slice(0, 700) + (raw.length > 700 ? '…' : '');
-}
-
-// Trims a debate transcript for Scribe with role-aware limits.
-//   Theta, Gregor — NEVER truncated (bear case, Logic block, VERDICT JSON must be verbatim)
-//   Phi bull thesis — 1500 chars (generous; thesis can be condensed)
-//   user/Scout turn — smart field extraction instead of char-slice
-//   Phi selection turn ("Selection: TICKER") — dropped entirely (mechanical noise)
-const TRANSCRIPT_CAPS = {
-  Theta:  Infinity,  // 3-5 bullets + verdict — must be complete
-  Gregor: Infinity,  // Logic block + VERDICT JSON — must be verbatim
-  Phi:    1500,      // bull thesis
-  default: 900,
-};
-function compactTranscript(transcript) {
-  return (transcript || [])
-    .filter(m => m.role !== 'system')
-    .filter(m => {
-      // Drop Phi's mechanical ticker-selection turn — adds zero analytical value for Scribe
-      const content = String(m.content || '').trim();
-      return !(m.name === 'Phi' && /^Selection:\s*[A-Z]{1,5}$/i.test(content));
-    })
-    .map(m => {
-      const label   = m.name || m.role;
-      const content = String(m.content || '');
-
-      // Scout context: extract structured fields instead of blind truncation
-      if (label === 'user') {
-        return `Scout Briefing:\n${extractScoutSummary(content)}`;
-      }
-
-      const cap     = TRANSCRIPT_CAPS[label] ?? TRANSCRIPT_CAPS.default;
-      const trimmed = content.length > cap
-        ? content.slice(0, cap) + '…[truncated for brevity]'
-        : content;
-      return `${label}: ${trimmed}`;
-    })
-    .join('\n\n');
-}
-
 // Reads the most recent logged decision from decisions.json.
 // Replaces the old in-memory lastDecision — survives restarts.
 function getLastDecision() {
@@ -207,95 +133,15 @@ const discordAlerter = new DiscordAlerter(config.discord || {});
 const getLiveQuote = snapTrade.GetLiveQuote.bind(snapTrade);
 const redLineEnabled = config.redline.enabled
 
-// Inject shared provider pool into each agent so fallback chains work
-const _providers = config.redline.providers || {};
-
-// Scout fallback: 70B for complex multi-signal analysis, separate env var from ideas.
-// GROQ_SCOUT_MODEL (default: llama-3.3-70b-versatile) is intentionally different from
-// GROQ_IDEAS_MODEL (default: llama-3.1-8b-instant) — they have separate TPD buckets on Groq.
-// If GROQ_API_KEY == GROQ_FALLBACK_KEY they share a budget, but different models = different limits.
-const scoutGroqFallback = config.redline.phi?.apiKey
-  ? new OpenAIProvider({
-      name:    'groq-scout',
-      apiKey:  config.redline.phi.apiKey,
-      model:   process.env.GROQ_SCOUT_MODEL || 'llama-3.3-70b-versatile',
-      baseUrl: config.redline.phi.baseUrl,
-    })
-  : groqIdeasFallback; // same-key fallback if no separate Phi key configured
-
-const scout = new ScoutLLM(
-  { ...config.redline.scout, durableAssets: config.redline.durableAssets || [], providers: _providers },
-  getLiveQuote,
-  scoutGroqFallback
-);
-const bull  = new PhiLLM({ ...(config.redline.phi   || {}), providers: _providers });
-const bear  = new ThetaLLM({ ...(config.redline.theta || {}), providers: _providers });
-const omega = new GregorLLM({ ...(config.redline.omega || {}), providers: _providers });
-const scribe = new GeminiProvider(config.redline.scribe)
-
-const debate = new Debate(bull, bear, omega, snapTrade, getLiveQuote)
-
-// ── Earnings Watcher — 2-min polling during earnings windows ─────────────────
-// Bypasses the 15-min sweep dead zone for high-conviction earnings beats.
-// onTrade reuses the same PDT-check → order → Telegram → Scribe pipeline as
-// the normal execution loop so earnings plays get full post-mortem coverage.
-const earningsWatcher = new EarningsWatcher({
-    scout,
-    debate,
-    snapTrade,
-    telegram: telegramAlerter,
-    getLiveQuote,
-    scoreThreshold: parseInt(process.env.EARNINGS_SCORE_THRESHOLD || '8', 10),
-    onTrade: async (actionable, scoutBriefing) => {
-        // Fetch fresh compliance state — earnings can fire at any hour
-        let stringifiedOrders24h = '[]';
-        let remaining = 1;
-        try {
-            const [orderCompliance, orders24h] = await Promise.all([
-                snapTrade.FetchOrderCompliance(),
-                snapTrade.FetchAccountOrders24h(true),
-            ]);
-            stringifiedOrders24h = DataCleaner.stringifyOrders(orders24h);
-            remaining = calculateRemainingDayTrades(orderCompliance);
-        } catch (e) {
-            console.warn('[EarningsWatcher] Compliance fetch failed — assuming 1 trade remaining:', e.message);
-        }
-
-        for (const trade of actionable) {
-            if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
-                console.error(`[EARNINGS] ⛔ CIRCUIT BREAKER: ${trade.action} ${trade.symbol} blocked — PDT limit.`);
-                telegramAlerter.sendMessage?.(`⛔ *EARNINGS PLAY BLOCKED — ${trade.symbol}*\nPDT limit reached — order not placed.`);
-                continue;
-            }
-
-            console.log(`[EARNINGS] ⚡ Placing ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'} (${trade.order_type})`);
-            const orderRes = await snapTrade.PlaceOrder(trade);
-            if (!orderRes) {
-                console.error(`[EARNINGS] ❌ Order failed for ${trade.symbol}.`);
-                telegramAlerter.sendMessage?.(`❌ *EARNINGS ORDER FAILED — ${trade.symbol}*\nSnapTrade rejected the order.`);
-                continue;
-            }
-
-            console.log(`[EARNINGS] ✅ Earnings play executed: ${trade.symbol}`);
-            telegramAlerter.sendTradeAlert(trade);
-
-            try {
-                const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
-                    ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price
-                    ?? 'N/A';
-                logDecisions([trade], scoutBriefing, liveVix, remaining, {
-                    horizon:     'INTRADAY',
-                    trigger:     'EARNINGS_BEAT',
-                    signalScore: null,
-                });
-            } catch (err) {
-                console.error('[DecisionLogger] Failed to log earnings trade:', err.message);
-            }
-
-            await runScribeReport(trade, '⚡ EARNINGS');
-        }
-    },
-});
+// ── Single agent ("Claude") — reviews each sweep and proposes ONE trade for Accept/Deny. ──
+// Cheaper-but-smart model (default Claude Haiku) via the existing provider factory.
+// groqIdeasFallback is reused as a resilience fallback if the primary is rate-limited.
+const agentProvider = createLLMProvider(config.agent);
+if (agentProvider?.isConfigured) {
+  console.log(`[Crucix] Analyst agent ready: ${config.agent.provider} / ${agentProvider.model}`);
+} else {
+  console.warn('[Crucix] Analyst agent NOT configured (set ANTHROPIC_API_KEY + config.agent). Proposals disabled.');
+}
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -396,7 +242,13 @@ if (telegramAlerter.isConfigured) {
     return formatToTelegramMarkdown(res)
     });
 
-  // Start polling for bot commands
+  // Inline Accept/Deny buttons on proposal cards route here.
+  telegramAlerter.onCallback(async (action, id, ctx) => {
+    if (action === 'accept') return await acceptProposal(id, ctx);
+    if (action === 'deny')   return await denyProposal(id, ctx);
+  });
+
+  // Start polling for bot commands + callback buttons
   telegramAlerter.startPolling(config.telegram.botPollingInterval);
 }
 
@@ -580,6 +432,19 @@ app.get('/api/redline', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 });
+// RedLine page settings — Auto Trade toggle + allowed investment horizons.
+app.get('/api/settings', (req, res) => {
+  try { res.json(getSettings()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/settings', express.json(), (req, res) => {
+  try {
+    const next = updateSettings(req.body || {});
+    console.log(`[Settings] Updated — autoTrade=${next.autoTrade} | types=${next.investmentTypes.join(',')}`);
+    res.json(next);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // List all reports (.html and .md for inline viewing; .docx listed for download)
 app.get('/api/reports', (req, res) => {
   try {
@@ -828,22 +693,22 @@ async function runSweepCycle() {
       // Delta gate: skip when no open positions AND nothing significant changed.
       const isQuietDelta = openPositionCount === 0 && criticalChanges === 0 && totalChanges < 3 && newSignals === 0;
 
-      // Market hours gate: Scout's entry-scanning purpose only applies during market hours.
+      // Market-hours gate: new-entry proposals only apply during market hours.
       // If market is closed AND there are no open positions to monitor, skip entirely.
-      // If there ARE open positions (TRADE AROUND / DEFENSIVE / AVERAGE DOWN), always run.
+      // If there ARE open positions to manage, always run so maintenance can be proposed.
       const inWindow = isMarketWindow();
 
       if (isQuietDelta) {
-        console.log(`[REDLINE] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Scout skipped.`);
+        console.log(`[PROPOSAL] 🔇 Delta gate — no open positions, no critical changes (${totalChanges} total). Agent skipped.`);
       } else if (!inWindow && openPositionCount === 0) {
-        console.log(`[REDLINE] 🌙 Market closed — Scout skipped (no open positions). Next window: 9:00 AM ET.`);
+        console.log(`[PROPOSAL] 🌙 Market closed — agent skipped (no open positions). Next window: 9:00 AM ET.`);
       } else {
         if (!inWindow && openPositionCount > 0) {
-          console.log(`[REDLINE] 🌙 Market closed but ${openPositionCount} open position(s) — Scout running for portfolio monitoring.`);
+          console.log(`[PROPOSAL] 🌙 Market closed but ${openPositionCount} open position(s) — agent running for portfolio monitoring.`);
         } else if (openPositionCount > 0) {
-          console.log(`[REDLINE] Scout running — ${openPositionCount} open position(s) to monitor.`);
+          console.log(`[PROPOSAL] Agent running — ${openPositionCount} open position(s) to monitor.`);
         }
-        await CheckDebateCycle(currentContext);
+        await runProposalCycle(currentContext);
       }
     }
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
@@ -889,409 +754,202 @@ async function runPortfolio() {
   }
 }
 
-async function CheckDebateCycle(context) {
-  const [buyingPower, openAccountOrders, orderCompliance, orders24h] = await Promise.all([
-      snapTrade.FetchAccountBuyingPower(),
-      snapTrade.FetchOpenAccountOrders(),
-      snapTrade.FetchOrderCompliance(),
-      snapTrade.FetchAccountOrders24h(true)
-  ]);
-  const stringifiedOrders24h = DataCleaner.stringifyOrders(orders24h)
-  const remaining = calculateRemainingDayTrades(orderCompliance)
-  const isRestricted = remaining === 0;
-  console.log(`[REDLINE] 📊 DAY TRADES REMAINING: ${remaining}/3`);
-  if (isRestricted) {
-      console.warn("[REDLINE] 🛡️ PDT PROTECTION ACTIVE: Bot is restricted to Overnight Holds.");
+// ── Price-safety guard (migrated from the retired debate.mjs) ──────────────────
+// Blocks orders whose price is implausibly far from the live quote (hallucination guard).
+function _isPriceSafe(orderPrice, livePrice, action = null, orderType = null, maxDriftPct = 0.15) {
+  if (!orderPrice || !livePrice) return true;
+  const drift = Math.abs(livePrice - orderPrice) / livePrice;
+  if (orderType === 'Limit') {
+    if (action === 'BUY'  && orderPrice <= livePrice) return true;  // below market ✓
+    if (action === 'SELL' && orderPrice >= livePrice) return true;  // above market ✓
+    return drift <= maxDriftPct;
   }
-  const lastDecision = getLastDecision();
-  console.log(`[REDLINE] Last decision → Ticker: ${lastDecision?.ticker || 'None'} | Trigger: ${lastDecision?.trigger || 'None'} | Date: ${lastDecision?.date || 'None'}`);
-
-  const openPositionCount = getOpenDecisions().length;
-  console.log(`[REDLINE] Open logged positions: ${openPositionCount}`);
-
-  const result = await scout.assessInfo(
-      context,
-      currentData,
-      snapTrade.GetCurrentPortfolio(),
-      lastDecision,
-      buyingPower,
-      openAccountOrders,
-      remaining,
-      stringifiedOrders24h,
-      openPositionCount,
-      lastGeopoliticalSummary
-  );
-
-  console.log(`[SCOUT] ${result}`);
-  if (!result) return;
-
-  // SCOUT "QUIET" CHECK
-  if (result.toUpperCase().includes("QUIET")) {
-      console.log(`[REDLINE] Scout Status: QUIET. Standing down.`);
-      return;
-  }
-
-  // SCOUT "TRADE AROUND" CHECK — durable asset with temporary headwind or profit-taking opportunity.
-  // Instead of selling at a loss, place a GTC SELL at breakeven/R1 and re-enter lower next sweep.
-  if (result.toUpperCase().includes("STATUS: TRADE AROUND")) {
-      const taTickerMatch    = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
-      const taTicker         = taTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
-      const sellTargetMatch  = result.match(/Sell_Target:\s*\$?([\d.]+)/i);
-      const reentryMatch     = result.match(/Reentry_Target:\s*\$?([\d.]+)/i);
-      const unitsToSellMatch = result.match(/Units_To_Sell[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
-      const unitsRemainingMatch = result.match(/Units_Remaining[^:]*:\s*[^=\n]*=?\s*([\d.]+)/i);
-      const scenarioMatch    = result.match(/Scenario:\s*(UNDERWATER|PARTIAL[_\s]EXIT|PROFIT[_\s]TAKE|BREAKEVEN[_\s]EXIT)/i);
-      const currentUnitsMatch = result.match(/Current_Units[^:]*:\s*([\d.]+)/i);
-      const sellTarget       = sellTargetMatch    ? parseFloat(sellTargetMatch[1])    : null;
-      const reentryTarget    = reentryMatch       ? parseFloat(reentryMatch[1])       : null;
-      const unitsToSell      = unitsToSellMatch   ? parseFloat(unitsToSellMatch[1])   : null;
-      const unitsRemaining   = unitsRemainingMatch? parseFloat(unitsRemainingMatch[1]): null;
-      const currentUnits     = currentUnitsMatch  ? parseFloat(currentUnitsMatch[1])  : null;
-      let scenario           = scenarioMatch?.[1]?.toUpperCase().replace(/[\s]/, '_') || 'UNDERWATER';
-
-      // ── PARTIAL_EXIT overflow guard ──────────────────────────────────────────
-      // If Scout's Units_To_Sell exceeds the actual held quantity, cost-basis recovery
-      // requires more shares than exist in the account. PARTIAL_EXIT is impossible —
-      // force a full exit (BREAKEVEN_EXIT) and log the reason.
-      if (scenario === 'PARTIAL_EXIT' && unitsToSell != null) {
-          const reportedHeld = currentUnits;
-          if (reportedHeld != null && unitsToSell > reportedHeld + 0.0001) {
-              console.warn(`[REDLINE] ⚠ PARTIAL_EXIT overflow — Scout's Units_To_Sell (${unitsToSell}) > held units (${reportedHeld}). Price dropped too far for cost-basis recovery. Forcing BREAKEVEN_EXIT (full exit).`);
-              scenario = 'BREAKEVEN_EXIT';
-          }
-      }
-      const isPartialExit    = scenario === 'PARTIAL_EXIT';
-
-      const scenarioEmoji = scenario === 'PROFIT_TAKE' ? '💰' : scenario === 'BREAKEVEN_EXIT' ? '🚪' : isPartialExit ? '🎯' : '🔄';
-      console.log(`[REDLINE] ${scenarioEmoji} TRADE AROUND — ${taTicker} | Scenario: ${scenario} | Sell: $${sellTarget ?? '?'}${isPartialExit ? ` | Units: ${unitsToSell ?? '?'} (${unitsRemaining ?? '?'} free-ride remaining)` : ` | Reentry: $${reentryTarget ?? '?'}`}`);
-
-      const scenarioInstruction = isPartialExit
-          ? `PARTIAL EXIT: Sell exactly ${unitsToSell ?? 'Units_To_Sell'} units to recover full original cost basis. The remaining ${unitsRemaining ?? 'Units_Remaining'} units cost $0 — they ride free. Phi: confirm sell price $${sellTarget} is achievable. Theta: confirm this is the right exit size — flag if units math looks wrong. Gregor: SELL exactly ${unitsToSell ?? 'Units_To_Sell'} units at $${sellTarget} GTC Limit. DO NOT sell all units — only the calculated recovery amount.`
-          : scenario === 'PROFIT_TAKE'
-          ? `Lock in gains and re-enter lower. Position is up >15% — don't ride it back to flat.`
-          : scenario === 'BREAKEVEN_EXIT'
-          ? `Original catalyst resolved — full exit at current price to free capital. Phi: confirm thesis is depleted. Theta: confirm no continuation. If either finds intact thesis, output WAIT.`
-          : `Exit at breakeven or better — do NOT sell at current loss.`;
-
-      const tradeAroundBriefing = [
-          result,
-          ``,
-          `══════════════════════════════════════════════`,
-          `⚡ TRADE AROUND MODE (${scenario}) — EXIT MANAGEMENT, NOT A NEW ENTRY`,
-          `══════════════════════════════════════════════`,
-          `Signal Score: 10`,
-          ``,
-          `CRITICAL REFRAME FOR ALL COUNCIL MEMBERS:`,
-          `  This is NOT a decision about whether to BUY ${taTicker}.`,
-          `  This is an EXIT order — we are managing an existing position.`,
-          `  The question is ONLY: is the Sell_Target ($${sellTarget}) achievable given current momentum and technicals?`,
-          ``,
-          `PHI — your role here is NOT to build a bull case for holding ${taTicker}.`,
-          `  Answer only: Can price reach $${sellTarget} within the stated horizon? If yes → confirm. If no → say WAIT.`,
-          `  Do NOT argue for keeping the position. That decision has been made by Scout.`,
-          ``,
-          `THETA — your role here is NOT to REJECT the position as a new entry.`,
-          `  Answer only: Is there a technical reason the price CANNOT reach $${sellTarget}? (e.g. hard resistance, momentum collapsing).`,
-          `  Do NOT issue REJECT for entry-quality reasons — issue WAIT only if the sell target is genuinely unreachable.`,
-          `  Your STOP level language applies to the remaining position AFTER the sell, not to a new entry.`,
-          ``,
-          `Scenario: ${scenarioInstruction}`,
-          ``,
-          isPartialExit
-              ? `GREGOR SELL INSTRUCTION (PARTIAL EXIT): units = ${unitsToSell ?? 'Units_To_Sell from Scout output'} | price = $${sellTarget ?? 'Sell_Target'} | order_type = Limit | time_in_force = GTC`
-              : `GREGOR SELL INSTRUCTION: place GTC SELL Limit at $${sellTarget ?? 'Scout stated target'}.`,
-          `  - order_type MUST be Limit`,
-          `  - time_in_force MUST be GTC`,
-          `  - Win-rate modifiers DO NOT apply to exit orders — size is fixed by the exit scenario, not portfolio performance metrics.`,
-          ...(!isPartialExit ? [`  - DO NOT place a re-entry BUY now — re-entry at $${reentryTarget ?? 'Reentry_Target'} handled next sweep after fill.`] : [
-              `  - Sell EXACTLY ${unitsToSell ?? 'calculated recovery amount'} units — do NOT sell all units.`,
-              `  - DO NOT place a re-entry BUY — remaining ${unitsRemaining ?? '?'} units stay as the free-ride position.`,
-          ]),
-      ].join('\n');
-
-      const taResult  = await debate.beginDebate(tradeAroundBriefing, context, remaining);
-      const taTrades  = Array.isArray(taResult) ? taResult : [taResult];
-      const taActions = taTrades.filter(t => t && t.action && t.action !== 'WAIT');
-
-      if (taActions.length === 0) {
-          console.log(`[REDLINE] 🔄 TRADE AROUND debate returned WAIT — no order placed for ${taTicker}.`);
-          //telegramAlerter.sendMessage?.(`🔄 *TRADE AROUND WAIT — ${taTicker}*\nCouncil could not confirm Sell Target $${sellTarget} is reachable. Monitoring.`);
-          return;
-      }
-
-      for (const trade of taActions) {
-          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
-              console.error(`[CRITICAL] CIRCUIT BREAKER: TRADE AROUND ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
-              continue;
-          }
-          // Hard-enforce GTC Limit — TRADE AROUND is never a market dump
-          if (trade.action === 'SELL') {
-              // ── SYMBOL GUARD (critical) ──────────────────────────────────────
-              // TRADE AROUND is a mechanical exit of a KNOWN held position (taTicker from Scout).
-              // Gregor must NOT be able to change the symbol. On 2026-06-03 Gregor hallucinated
-              // a SELL for ITA during a BA exit debate — the order nearly sold a different position
-              // at BA's price. The symbol is structural data from Scout, not a Gregor decision.
-              if (trade.symbol && trade.symbol.toUpperCase() !== taTicker) {
-                  console.error(`[REDLINE] 🛑 SYMBOL HALLUCINATION BLOCKED — Gregor output SELL ${trade.symbol} during a ${taTicker} TRADE AROUND debate. Overriding symbol → ${taTicker} (the actual held position). Gregor does not choose the symbol in exit mode.`);
-              }
-              trade.symbol        = taTicker;
-              trade.order_type    = 'Limit';
-              trade.time_in_force = 'GTC';
-              // Always use Scout's sell target — Gregor's no-candle pricing rules are irrelevant here
-              if (sellTarget) trade.price = sellTarget;
-
-              // ── UNITS: always from Scout's structured output, never Gregor's verdict ──
-              // PARTIAL_EXIT → unitsToSell (cost-recovery amount, leaves free-ride remainder).
-              // Full exits   → currentUnits (sell entire held position) if Scout reported it,
-              //                else unitsToSell. Gregor's unit count is never trusted in exit mode.
-              const scoutUnits = isPartialExit
-                  ? unitsToSell
-                  : (currentUnits ?? unitsToSell);
-              if (scoutUnits != null) {
-                  if (trade.units == null || Math.abs(trade.units - scoutUnits) > 0.001) {
-                      console.log(`[REDLINE] 🎯 ${scenario} unit override: ${taTicker} — Gregor said ${trade.units ?? 'null'}, using Scout's ${scoutUnits} units${isPartialExit ? ` (cost-recovery; ${unitsRemaining ?? '?'} free-ride stay)` : ' (full held position)'}.`);
-                  }
-                  trade.units = scoutUnits;
-              }
-
-              // ── FRACTIONAL → DAY (applies to ALL exit scenarios) ─────────────
-              // SnapTrade rejects fractional GTC orders ("fractional orders must be DAY orders").
-              // Previously this only ran for PARTIAL_EXIT — full exits with fractional units
-              // (e.g. 0.000041 share dust positions) failed with code 1119. Fix: check units
-              // regardless of scenario.
-              if (trade.units != null && !Number.isInteger(trade.units)) {
-                  trade.time_in_force = 'Day';
-                  console.log(`[REDLINE] 📋 Fractional units (${trade.units}) → time_in_force forced to Day (SnapTrade rule: fractional cannot be GTC).`);
-              }
-          }
-
-          const freeRideNote = isPartialExit ? ` | Free-ride remainder: ${unitsRemaining ?? '?'} shares` : ` | Re-entry: $${reentryTarget ?? 'TBD'}`;
-          console.log(`[REDLINE] ${scenarioEmoji} Placing TRADE AROUND GTC SELL (${scenario}): ${trade.symbol} @ $${trade.price} × ${trade.units ?? 'all'} units`);
-          const orderRes = await snapTrade.PlaceOrder(trade);
-          if (!orderRes) { console.error(`[REDLINE] ❌ TRADE AROUND order failed for ${trade.symbol}.`); continue; }
-          console.log(`[REDLINE] ${scenarioEmoji} TRADE AROUND placed ✅: ${trade.symbol} @ $${trade.price}${freeRideNote}`);
-
-          const tgLabel = isPartialExit
-              ? `🎯 *Partial Exit — ${trade.symbol}*\nSelling ${unitsToSell} units @ $${trade.price} (GTC Limit).\n${unitsRemaining ?? '?'} shares remain as free-ride position (zero cost basis).`
-              : scenario === 'PROFIT_TAKE'
-              ? `💰 *Profit Take — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`
-              : scenario === 'BREAKEVEN_EXIT'
-              ? `🚪 *Breakeven Exit — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`
-              : `🔄 *Trade Around — ${trade.symbol}*\nGTC SELL @ $${trade.price}.\nRe-entry: $${reentryTarget ?? 'TBD'} next sweep.`;
-          telegramAlerter.sendMessage?.(tgLabel);
-          telegramAlerter.sendTradeAlert(trade);
-          try {
-              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
-              logDecisions([trade], result, liveVix, remaining, {
-                  horizon: 'SWING',
-                  trigger: `TRADE_AROUND_${scenario}@${sellTarget}`,
-                  signalScore: null,
-              });
-          } catch (err) { console.error('[DecisionLogger] Failed to log TRADE AROUND:', err.message); }
-          await runScribeReport(trade, `${scenarioEmoji} TRADE AROUND (${scenario})`);
-      }
-      return;
-  }
-
-  // SCOUT "DEFENSIVE" CHECK — held position threatened, route to exit debate
-  if (result.toUpperCase().includes("STATUS: DEFENSIVE")) {
-      const urgencyMatch  = result.match(/Urgency:\s*(IMMEDIATE|SWING|WATCH)/i);
-      const defUrgency    = urgencyMatch?.[1]?.toUpperCase() || 'IMMEDIATE';
-      const defTickerMatch = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
-      const defTicker     = defTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
-      const defThreatMatch = result.match(/Threat:\s*(.+)/i);
-      const defThreat     = defThreatMatch?.[1]?.trim().slice(0, 120) || '(no threat summary)';
-      console.log(`[REDLINE] 🛡 Scout Status: DEFENSIVE | Ticker: ${defTicker} | Urgency: ${defUrgency}`);
-
-      // WATCH = monitor only — threat is real but not imminent enough to act now.
-      // Debating and potentially executing on a WATCH signal wastes a trade and ignores Scout's judgement.
-      if (defUrgency === 'WATCH') {
-          console.log(`[REDLINE] 🛡 DEFENSIVE WATCH — no debate triggered. Alerting and standing by.`);
-          telegramAlerter.sendMessage?.(
-              `🛡 *DEFENSIVE WATCH — ${defTicker}*\n${defThreat}…\n_Scout flagged a threat but recommends holding. No order placed._`
-          );
-          return;
-      }
-
-      // SWING = threat is building, debate with HOLD bias — Phi must make a concrete case to hold.
-      // IMMEDIATE = exit debate with EXIT bias — default to SELL unless Phi has a hard counter.
-      console.log(`[REDLINE] 🛡 DEFENSIVE ${defUrgency} — routing to exit debate...`);
-
-      const defensiveBriefing = [
-          result,
-          ``,
-          `⚠ DEFENSIVE MODE: Scout has identified a held position facing imminent downside.`,
-          `Council objective: determine whether to EXIT before the threat materialises.`,
-          `Phi argues HOLD (why the thesis survives or threat is wrong). Theta argues EXIT (why the threat is real and imminent).`,
-          `Gregor: default bias is SELL — exit before the market prices it in. Hold only if Phi provides a concrete counter to the specific threat.`,
-          `URGENCY: ${defUrgency}. ${defUrgency === 'IMMEDIATE'
-              ? 'Use order_type=Market tif=Day — guaranteed exit, price optimisation is secondary.'
-              : 'Limit@current price acceptable — urgency allows time to work the order.'}`,
-      ].join('\n');
-
-      const defResult  = await debate.beginDebate(defensiveBriefing, context, remaining);
-      const defTrades  = Array.isArray(defResult) ? defResult : [defResult];
-      const defActions = defTrades.filter(t => t && t.action && t.action !== 'WAIT');
-
-      if (defActions.length === 0) {
-          console.log(`[REDLINE] 🛡 Defensive debate returned WAIT — holding position.`);
-          return;
-      }
-
-      for (const trade of defActions) {
-          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
-              console.error(`[CRITICAL] CIRCUIT BREAKER: Defensive ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
-              continue;
-          }
-
-          // IMMEDIATE urgency → force Market order so the exit is guaranteed.
-          // A SELL Limit at current price can sit unfilled if price ticks down before execution.
-          if (defUrgency === 'IMMEDIATE' && trade.action === 'SELL' && trade.order_type === 'Limit') {
-              console.log(`[REDLINE] 🛡 IMMEDIATE urgency — overriding Limit→Market for guaranteed exit on ${trade.symbol}.`);
-              trade.order_type = 'Market';
-              trade.price      = null;
-          }
-
-          console.log(`[REDLINE] 🛡 Defensive ${trade.action} ${trade.symbol} @ $${trade.price ?? 'market'} (${trade.order_type})`);
-          const orderRes = await snapTrade.PlaceOrder(trade);
-          if (!orderRes) { console.error(`[REDLINE] ❌ Defensive order failed for ${trade.symbol}.`); continue; }
-          console.log(`[REDLINE] 🛡 Defensive order executed ✅: ${trade.symbol}`);
-          telegramAlerter.sendTradeAlert(trade);
-
-          // Log with DEFENSIVE horizon override — extractSignals can't find standard Scout fields here
-          try {
-              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
-              const threatMatch = result.match(/Threat:\s*(.+)/i);
-              logDecisions([trade], result, liveVix, remaining, {
-                  horizon:     'DEFENSIVE',
-                  trigger:     defUrgency,
-                  signalScore: null,
-              });
-          } catch (err) { console.error('[DecisionLogger] Failed to log defensive trade:', err.message); }
-
-          // Scribe post-mortem — same as regular trades
-          await runScribeReport(trade, '🛡 DEFENSIVE');
-      }
-      return;
-  }
-
-  // SCOUT "AVERAGE_DOWN" CHECK — held durable asset at support, thesis intact, adding lowers cost basis
-  if (result.toUpperCase().includes("STATUS: AVERAGE_DOWN")) {
-      const adTickerMatch   = result.match(/[-\s]*Ticker:\s*([A-Z]{1,5})/i);
-      const adTicker        = adTickerMatch?.[1]?.toUpperCase() || 'UNKNOWN';
-      const addPriceMatch   = result.match(/Add_Price:\s*\$?([\d.]+)/i);
-      const newAvgCostMatch = result.match(/New_Avg_Cost:\s*\$?([\d.]+)/i);
-      const supportMatch    = result.match(/Support_Level:\s*(.+)/i);
-      const addPrice        = addPriceMatch   ? parseFloat(addPriceMatch[1])   : null;
-      const newAvgCost      = newAvgCostMatch ? parseFloat(newAvgCostMatch[1]) : null;
-      const supportLevel    = supportMatch?.[1]?.trim().slice(0, 60) || '(unknown)';
-
-      console.log(`[REDLINE] 📉 AVERAGE DOWN — ${adTicker} | Add Price: $${addPrice ?? '?'} | New Avg Cost: $${newAvgCost ?? '?'}`);
-
-      const avgDownBriefing = [
-          result,
-          ``,
-          `📉 AVERAGE DOWN MODE: Scout identified a held durable asset at support with intact thesis.`,
-          `Council objective: validate that adding at this price lowers cost basis with acceptable risk.`,
-          `Support: ${supportLevel}`,
-          `Phi: confirm the support level is real and the structural thesis remains intact. Show updated bull case with new avg cost.`,
-          `Theta: confirm a defined stop level exists below support. Flag immediately if S1/S2 is undefined or thesis is structurally broken — REJECT if stop cannot be defined.`,
-          `Gregor: place GTC BUY Limit at $${addPrice ?? 'Add_Price from Scout output'}.`,
-          `  - order_type MUST be Limit — we are adding at support, not chasing at market.`,
-          `  - time_in_force MUST be GTC — support test may take 1-3 sessions to fill.`,
-          `  - price MUST be $${addPrice ?? 'Add_Price'}.`,
-          `  - Size to achieve New_Avg_Cost of $${newAvgCost ?? 'stated in Scout output'}.`,
-          `  - If council cannot confirm support is real or thesis is intact → output WAIT.`,
-      ].join('\n');
-
-      const adResult  = await debate.beginDebate(avgDownBriefing, context, remaining);
-      const adTrades  = Array.isArray(adResult) ? adResult : [adResult];
-      const adActions = adTrades.filter(t => t && t.action && t.action !== 'WAIT');
-
-      if (adActions.length === 0) {
-          console.log(`[REDLINE] 📉 AVERAGE DOWN debate returned WAIT — no order placed for ${adTicker}.`);
-          return;
-      }
-
-      for (const trade of adActions) {
-          if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
-              console.error(`[CRITICAL] CIRCUIT BREAKER: AVERAGE DOWN ${trade.action} on ${trade.symbol} blocked — PDT limit.`);
-              continue;
-          }
-
-          // Hard-enforce GTC Limit — we are adding at support, not market buying
-          if (trade.action === 'BUY') {
-              trade.order_type    = 'Limit';
-              trade.time_in_force = 'GTC';
-              if (addPrice) trade.price = addPrice;
-          }
-
-          console.log(`[REDLINE] 📉 Placing AVERAGE DOWN GTC BUY: ${trade.symbol} @ $${trade.price}`);
-          const orderRes = await snapTrade.PlaceOrder(trade);
-          if (!orderRes) { console.error(`[REDLINE] ❌ AVERAGE DOWN order failed for ${trade.symbol}.`); continue; }
-          console.log(`[REDLINE] 📉 AVERAGE DOWN GTC BUY placed ✅: ${trade.symbol} @ $${trade.price} | New Avg Cost target: $${newAvgCost ?? 'TBD'}`);
-          telegramAlerter.sendMessage?.(
-              `📉 *AVERAGE DOWN — ${trade.symbol}*\nGTC BUY Limit @ $${trade.price} placed.\nNew avg cost after fill: $${newAvgCost ?? 'TBD'}`
-          );
-          telegramAlerter.sendTradeAlert(trade);
-          try {
-              const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value ?? 'N/A';
-              logDecisions([trade], result, liveVix, remaining, {
-                  horizon:     'SWING',
-                  trigger:     `AVERAGE_DOWN@${addPrice}`,
-                  signalScore: null,
-              });
-          } catch (err) { console.error('[DecisionLogger] Failed to log AVERAGE DOWN:', err.message); }
-          await runScribeReport(trade, '📉 AVERAGE DOWN');
-      }
-      return;
-  }
-
-  // 3. ESCALATE TO COUNCIL
-  console.log("[REDLINE] SCOUT DETECTED OPPORTUNITY. ESCALATING TO COUNCIL...");
-  let debateResult = await debate.beginDebate(result, context, remaining);
-  
-  const trades = Array.isArray(debateResult) ? debateResult : [debateResult];
-  const actionableTrades = trades.filter(t => t && t.action && t.action !== "WAIT");
-
-  // 4. COUNCIL "WAIT" HANDLING
-  if (actionableTrades.length === 0) {
-      console.log("[REDLINE] Council returned no actionable trades (Verdict: WAIT).");
-      // lastDecision IS ALREADY SAVED ABOVE, so we can safely exit here.
-      return;
-  }
-
-  // 5. EXECUTION LOOP (Actionable trades only)
-    for (const trade of actionableTrades) {
-      if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
-        console.error(`[CRITICAL] CIRCUIT BREAKER: Blocked ${trade.action} on ${trade.symbol}. Already traded today & 0 day trades left.`);
-        continue; 
-      }
-        console.log(`[REDLINE] Execution Triggered: ${trade.action} ${trade.symbol}`);
-        const orderRes = await snapTrade.PlaceOrder(trade);
-        
-      if (!orderRes) {
-          console.error(`[REDLINE] ❌ Order failed for ${trade.symbol}.`);
-          break;
-      }
-      console.log(`[REDLINE] Order Executed ✅: ${trade.symbol}`);
-      telegramAlerter.sendTradeAlert(trade);
-
-      // Log to decisions.json only after confirmed execution
-      try {
-        // VIX: try FRED (daily value) → yfinance ^VIX quote → N/A
-        const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
-            ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price
-            ?? 'N/A';
-        logDecisions([trade], result, liveVix, remaining);
-      } catch (err) {
-        console.error('[DecisionLogger] Failed to log executed trade:', err.message);
-      }
-
-      // Reporting — Scribe post-mortem
-      await runScribeReport(trade);
-  }
+  return drift <= 0.02; // market/unknown: must be near live
 }
+
+function formatProposalCard(p) {
+  const expEt = new Date(p.expiresAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+  const priceStr = p.price ? `$${p.price}` : (p.order_type === 'Market' ? 'market' : 'TBD');
+  const qty = p.units ? ` × ${p.units}` : (p.notional_value ? ` ($${p.notional_value})` : '');
+  return [
+    `${p.action === 'MAINTENANCE' ? '🛠' : '📈'} *${p.title}*`,
+    ``,
+    p.desc,
+    ``,
+    `*${p.side} ${p.ticker}* — ${p.order_type} @ ${priceStr}${qty} · ${p.time_in_force}`,
+    p.stopLoss ? `🛑 Hard stop: $${p.stopLoss} (auto-sells, no approval, if breached)` : '',
+    `Confidence: ${p.confidence}${p.horizon ? ` · ${p.horizon}` : ''}`,
+    `⌛ Expires: ${expEt} ET`,
+  ].filter(Boolean).join('\n');
+}
+
+// ── Proposal cycle — the single-agent replacement for the council. ─────────────
+// Runs each sweep (behind the same delta/market gates that fronted the old council):
+//   expire stale cards → gather state → ask the agent for ONE proposal → send Accept/Deny card.
+async function runProposalCycle(context) {
+  // 1. Expire stale proposals — their Telegram cards disappear.
+  try {
+    const expired = expireStale();
+    for (const e of expired) {
+      if (e.telegramMessageId) await telegramAlerter.deleteMessage(e.telegramMessageId, telegramAlerter.proposalsChatId);
+      console.log(`[PROPOSAL] ⌛ Expired & removed: ${e.ticker} (${e.action})`);
+    }
+  } catch (err) { console.error('[PROPOSAL] expireStale failed:', err.message); }
+
+  if (!agentProvider?.isConfigured) return;
+
+  // 2. Gather account state (same primitives the council used).
+  const [buyingPower, openAccountOrders, orderCompliance, orders24h, portfolio] = await Promise.all([
+    snapTrade.FetchAccountBuyingPower(),
+    snapTrade.FetchOpenAccountOrders(),
+    snapTrade.FetchOrderCompliance(),
+    snapTrade.FetchAccountOrders24h(true),
+    snapTrade.FetchUserTrades(),
+  ]);
+  const remaining = calculateRemainingDayTrades(orderCompliance);
+  console.log(`[PROPOSAL] 📊 DAY TRADES REMAINING: ${remaining}/3 | Open logged positions: ${getOpenDecisions().length}`);
+  const priorPending = getPending();
+
+  // RedLine-page settings: Auto Trade toggle + allowed investment horizons.
+  const settings = getSettings();
+
+  // 3. Single agent → at most one proposal, constrained to the allowed horizons.
+  const proposal = await generateProposal(
+    agentProvider, currentData, portfolio, openAccountOrders,
+    buyingPower, remaining, priorPending, groqIdeasFallback, settings.investmentTypes
+  );
+  if (!proposal || proposal.action === 'NO_ACTION') {
+    console.log(`[PROPOSAL] No proposal this cycle${proposal?.desc ? ` — ${proposal.desc}` : ''}.`);
+    return;
+  }
+
+  // 4a. Enforce the investment-type filter (a NEW_BUY outside the allowed horizons is dropped;
+  //     MAINTENANCE/exits are always allowed — you must be able to manage what you already hold).
+  if (proposal.action === 'NEW_BUY' && proposal.horizon && !settings.investmentTypes.includes(proposal.horizon)) {
+    console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${settings.investmentTypes.join(',')}].`);
+    return;
+  }
+
+  // 4b. Don't repeat a ticker already pending.
+  if (hasPendingForTicker(proposal.ticker)) {
+    console.log(`[PROPOSAL] Skipped — ${proposal.ticker} already has a pending proposal.`);
+    return;
+  }
+
+  const rec = createProposal(proposal);
+
+  // 5a. AUTO-TRADE ON → execute immediately, no Accept/Deny (hard stop-losses still apply).
+  if (settings.autoTrade) {
+    console.log(`[PROPOSAL] 🤖 Auto-Trade ON — executing ${rec.action} ${rec.ticker} without approval.`);
+    await telegramAlerter.sendMessage(
+      `🤖 *AUTO-TRADE (no approval)*\n${formatProposalCard(rec)}`,
+      { chatId: telegramAlerter.proposalsChatId }
+    );
+    await acceptProposal(rec.id, { chatId: telegramAlerter.proposalsChatId, auto: true });
+    return;
+  }
+
+  // 5b. AUTO-TRADE OFF → deliver the Accept/Deny card to the dedicated proposals channel.
+  const replyMarkup = { inline_keyboard: [[
+    { text: '✅ Accept', callback_data: `accept:${rec.id}` },
+    { text: '❌ Deny',   callback_data: `deny:${rec.id}` },
+  ]] };
+  const sent = await telegramAlerter.sendMessage(formatProposalCard(rec), {
+    chatId: telegramAlerter.proposalsChatId, replyMarkup,
+  });
+  if (sent?.messageId) attachMessageId(rec.id, sent.messageId);
+  console.log(`[PROPOSAL] 📬 Sent ${rec.action} ${rec.ticker} (expires ${rec.expiresAt}) — awaiting Accept/Deny.`);
+}
+
+// ── Accept handler — the ONLY path that places a live order. ───────────────────
+async function acceptProposal(id, ctx) {
+  const p = getProposal(id);
+  if (!p) return 'Not found';
+  if (p.status !== 'PENDING') return `Already ${p.status.toLowerCase()}`;
+  if (new Date(p.expiresAt).getTime() <= Date.now()) {
+    setStatus(id, 'EXPIRED');
+    if (p.telegramMessageId) await telegramAlerter.deleteMessage(p.telegramMessageId, ctx?.chatId);
+    return 'Expired';
+  }
+
+  // Fresh compliance + live price for the mechanical guards.
+  let remaining = 1, stringifiedOrders24h = '[]', livePrice = null;
+  try {
+    const [comp, o24, quote] = await Promise.all([
+      snapTrade.FetchOrderCompliance(),
+      snapTrade.FetchAccountOrders24h(true),
+      getLiveQuote(p.ticker).catch(() => null),
+    ]);
+    remaining = calculateRemainingDayTrades(comp);
+    stringifiedOrders24h = DataCleaner.stringifyOrders(o24);
+    livePrice = quote?.price ?? null;
+  } catch (e) { console.warn('[PROPOSAL] compliance/quote fetch failed:', e.message); }
+
+  const trade = {
+    symbol:         p.ticker,
+    action:         p.side,
+    order_type:     p.order_type || 'Limit',
+    price:          p.price ?? undefined,
+    units:          p.units ?? undefined,
+    notional_value: p.notional_value ?? undefined,
+    time_in_force:  p.time_in_force || 'Day',
+    stopLossPrice:  p.stopLoss ?? null, // persisted by logDecisions → enforced by the hard stop-loss watcher
+  };
+
+  // Migrated mechanical guards (from the retired debate.mjs):
+  if (trade.units != null && !Number.isInteger(trade.units)) trade.time_in_force = 'Day'; // fractional → Day
+  if (livePrice && !_isPriceSafe(trade.price, livePrice, trade.action, trade.order_type)) {
+    setStatus(id, 'FAILED', { error: 'price-safety' });
+    await telegramAlerter.editMessageText(p.telegramMessageId,
+      `⚠️ *${p.title}* — BLOCKED\nProposed price $${trade.price} is too far from live $${livePrice}. Not placed.`,
+      { chatId: ctx?.chatId });
+    return 'Blocked: price';
+  }
+  if (isDayTrade(trade, remaining, stringifiedOrders24h)) {
+    setStatus(id, 'FAILED', { error: 'pdt' });
+    await telegramAlerter.editMessageText(p.telegramMessageId,
+      `⛔ *${p.title}* — BLOCKED\nPDT limit — would be a day trade with 0 remaining. Not placed.`,
+      { chatId: ctx?.chatId });
+    return 'Blocked: PDT';
+  }
+
+  setStatus(id, 'ACCEPTED');
+  console.log(`[PROPOSAL] ✅ Accepted — placing ${trade.action} ${trade.symbol}`);
+  const orderRes = await snapTrade.PlaceOrder(trade);
+  if (!orderRes) {
+    setStatus(id, 'FAILED', { error: 'order-rejected' });
+    await telegramAlerter.editMessageText(p.telegramMessageId,
+      `❌ *${p.title}* — ORDER FAILED\nSnapTrade rejected ${trade.action} ${trade.symbol}.`,
+      { chatId: ctx?.chatId });
+    return 'Order failed';
+  }
+
+  setStatus(id, 'EXECUTED', { orderId: orderRes?.brokerage_order_id || orderRes?.id || null });
+  try {
+    const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
+      ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price ?? 'N/A';
+    logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null });
+  } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
+
+  telegramAlerter.sendTradeAlert?.(trade);
+  await telegramAlerter.editMessageText(p.telegramMessageId,
+    `✅ *${p.title}* — EXECUTED\n${trade.action} ${trade.symbol} @ ${trade.price ? `$${trade.price}` : trade.order_type} placed.`,
+    { chatId: ctx?.chatId });
+  return 'Executed ✅';
+}
+
+// ── Deny handler ──────────────────────────────────────────────────────────────
+async function denyProposal(id, ctx) {
+  const p = getProposal(id);
+  if (!p) return 'Not found';
+  if (p.status !== 'PENDING') return `Already ${p.status.toLowerCase()}`;
+  setStatus(id, 'DENIED');
+  await telegramAlerter.editMessageText(p.telegramMessageId,
+    `❌ *${p.title}* — DENIED\nNo order placed.`, { chatId: ctx?.chatId });
+  console.log(`[PROPOSAL] ❌ Denied — ${p.ticker}`);
+  return 'Denied';
+}
+
 // === Startup ===
 async function start() {
   const port = config.port;
@@ -1364,14 +1022,11 @@ async function start() {
     // performance review report if new data exists since the last review.
     scheduleReviewMode();
 
-    // ── Stop-Loss Watcher — runs every 90s, completely independent of council ──
-    // Fires hard exits on open logged positions when stop-loss, trailing stop,
-    // or INTRADAY EOD thresholds are breached. No LLM involved.
+    // ── HARD stop-loss watcher — the deliberate exception to the approval model. ──
+    // Runs on a fast independent timer and force-sells (market, no Accept/Deny) any open
+    // position that breaches its stop. A stop-loss that needs approval is not a stop-loss.
+    // Discretionary exits still go through MAINTENANCE proposals; only stops bypass approval.
     startStopLossWatcher(snapTrade, telegramAlerter);
-
-    // ── Earnings Watcher — 2-min polling during earnings windows ─────────────
-    // Only runs when REDLINE is enabled and FINNHUB_API_KEY is set.
-    if (redLineEnabled) earningsWatcher.start();
   });
 }
 
@@ -1380,34 +1035,6 @@ async function start() {
  * On startup, checks if today's review has already run; if not, fires immediately.
  * Uses a simple polling interval (every minute) to avoid timezone complexity.
  */
-// ── Scribe post-mortem helper — reused by both ESCALATING and DEFENSIVE branches ──
-async function runScribeReport(trade, label = '') {
-  try {
-    const cleanTranscript = compactTranscript(trade.transcript);
-    console.log(`[SCRIBE] ${label ? label + ' ' : ''}Transcript compacted to ${cleanTranscript.length} chars`);
-    console.log(`[REDLINE] Cooling down for 10s before Scribe...`);
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    console.log(`[REDLINE] Initializing Scribe...`);
-    let scribeRes;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        scribeRes = await scribe.complete(ScribePrompt, cleanTranscript, { maxTokens: 6000 }, true);
-        break;
-      } catch (err) {
-        const is429 = err.message?.includes('429') || err.message?.includes('quota');
-        if (is429 && attempt < 3) {
-          console.warn(`[SCRIBE] 429 rate limit (attempt ${attempt}/3) — waiting 30s...`);
-          await new Promise(r => setTimeout(r, 30000));
-        } else { throw err; }
-      }
-    }
-    await generateLocalReport(trade.symbol, cleanTranscript, scribeRes.text);
-    console.log(`[SCRIBE] ✅ Report generated for ${trade.symbol}`);
-  } catch (e) {
-    console.log('SCRIBE FAILED: ', e.message);
-  }
-}
-
 function scheduleReviewMode() {
   // Seed from reviewState.json so restarts don't re-trigger a review that already ran today
   const REVIEW_STATE_PATH = join(ROOT, 'runs', 'reviewState.json');

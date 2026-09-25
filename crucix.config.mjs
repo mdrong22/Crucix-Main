@@ -14,9 +14,19 @@ export default {
     baseUrl:       process.env.OLLAMA_BASE_URL       || null,
   },
 
+  // Single trading agent ("Claude") — reviews each sweep and proposes ONE trade for Accept/Deny.
+  // Cheaper-but-smart default (Claude Haiku). Point AGENT_MODEL at any Anthropic model.
+  agent: {
+    provider: process.env.AGENT_PROVIDER || 'anthropic',
+    apiKey:   process.env.ANTHROPIC_API_KEY || null,
+    model:    process.env.AGENT_MODEL || 'claude-haiku-4-5',
+  },
+
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || null,
     chatId: process.env.TELEGRAM_CHAT_ID || null,
+    // Dedicated channel for trade proposals (Accept/Deny cards). Falls back to chatId if unset.
+    proposalsChatId: process.env.PROPOSALS_CHAT_ID || null,
     botPollingInterval: parseInt(process.env.TELEGRAM_POLL_INTERVAL) || 5000,
     channels: process.env.TELEGRAM_CHANNELS || null, // Comma-separated extra channel IDs
   },

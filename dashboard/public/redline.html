@@ -437,6 +437,32 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
     </div>
     <div class="col-side">
 
+      <!-- AGENT SETTINGS PANEL -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">◈ AGENT SETTINGS</div>
+          <div class="panel-badge" id="settingsBadge">—</div>
+        </div>
+        <div style="padding:12px 6px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div>
+              <div style="font-weight:700;font-size:12px;letter-spacing:.5px">AUTO TRADE</div>
+              <div style="font-size:10px;opacity:.6;margin-top:2px">Execute without approval · hard stop-losses always on</div>
+            </div>
+            <button class="report-filter-btn" id="autoTradeBtn" onclick="toggleAutoTrade()">OFF</button>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:12px;letter-spacing:.5px;margin-bottom:8px">INVESTMENT TYPE</div>
+            <div class="report-filter-bar" id="horizonBar">
+              <button class="report-filter-btn" data-h="INTRADAY" onclick="toggleHorizon('INTRADAY')">SHORT-TERM</button>
+              <button class="report-filter-btn" data-h="SWING" onclick="toggleHorizon('SWING')">SWING</button>
+              <button class="report-filter-btn" data-h="LONG" onclick="toggleHorizon('LONG')">LONG</button>
+            </div>
+            <div style="font-size:10px;opacity:.6;margin-top:6px">Which horizons the agent may propose for new buys.</div>
+          </div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">◈ ORDERS // LAST 24H</div>
@@ -944,10 +970,41 @@ async function loadAll(manual=false){
   }
 }
 
+// ── AGENT SETTINGS (Auto Trade + Investment Type)
+let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG']};
+function renderSettings(){
+  const btn=document.getElementById('autoTradeBtn');
+  if(btn){btn.textContent=_settings.autoTrade?'ON':'OFF';btn.classList.toggle('active',!!_settings.autoTrade);}
+  document.querySelectorAll('#horizonBar .report-filter-btn').forEach(b=>{
+    b.classList.toggle('active',_settings.investmentTypes.includes(b.dataset.h));
+  });
+  const badge=document.getElementById('settingsBadge');
+  if(badge)badge.textContent=_settings.autoTrade?'⚡ AUTO':'✋ MANUAL';
+}
+async function loadSettings(){
+  try{const res=await fetch('/api/settings');if(!res.ok)return;_settings=await res.json();renderSettings();}
+  catch(e){console.error('[SETTINGS] load failed',e);}
+}
+async function saveSettings(patch){
+  try{
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
+    if(res.ok){_settings=await res.json();renderSettings();}
+  }catch(e){console.error('[SETTINGS] save failed',e);}
+}
+function toggleAutoTrade(){saveSettings({autoTrade:!_settings.autoTrade});}
+function toggleHorizon(h){
+  const set=new Set(_settings.investmentTypes);
+  set.has(h)?set.delete(h):set.add(h);
+  if(set.size===0)return; // never allow an empty set (would silence the agent)
+  saveSettings({investmentTypes:[...set]});
+}
+
 loadAll();
 loadReports();
+loadSettings();
 setInterval(()=>loadAll(),5*60*1000);
 setInterval(()=>loadReports(),2*60*1000); // refresh report list every 2 min
+setInterval(()=>loadSettings(),30*1000);  // keep settings in sync across devices
 </script>
 </body>
 </html>
