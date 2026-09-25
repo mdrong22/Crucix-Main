@@ -586,6 +586,9 @@ function updateWinLossGauge(winners,losers){
   winArc.style.filter=good?'drop-shadow(0 0 5px rgba(57,255,110,0.5))':'drop-shadow(0 0 5px rgba(192,78,1,0.4))';
 }
 
+// Live market state, refreshed by loadCycle() from /api/cycle (server is the source of truth).
+window._marketOpen=true;
+function marketStatusText(){return window._marketOpen?'MARKET OPEN · LIVE DATA':'MARKET CLOSED · MONITORING';}
 function setStatus(state,txt){
   const dot=document.getElementById('statusDot'),lbl=document.getElementById('statusTxt');
   dot.className='status-dot '+state;lbl.textContent=txt;
@@ -1002,7 +1005,7 @@ async function loadAll(manual=false){
     window._lastPositions=positions;
     const lu=document.getElementById('lastUpdated');
     if(lu)lu.textContent='LAST UPDATED: '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    setStatus('live','MARKET OPEN · LIVE DATA');
+    setStatus('live',marketStatusText());
     const eb=document.getElementById('errorBanner');if(eb)eb.classList.remove('show');
   }catch(err){
     setStatus('error','CONNECTION ERROR');showError(err.message);console.error('[REDLINE] Load failed:',err);
@@ -1048,6 +1051,12 @@ function cycIn(ts){if(!ts)return'—';const s=Math.floor((ts-Date.now())/1000);i
 async function loadCycle(){
   try{
     const r=await fetch('/api/cycle');if(!r.ok)return;const c=await r.json();
+    if(typeof c.marketOpen==='boolean'){
+      window._marketOpen=c.marketOpen;
+      // Keep the header status in sync without clobbering a live connection error.
+      const dot=document.getElementById('statusDot');
+      if(dot&&!dot.classList.contains('error'))setStatus('live',marketStatusText());
+    }
     const m=CYC[c.stage]||CYC.IDLE;
     for(let i=1;i<=4;i++){
       const step=document.querySelector('.cyc-step[data-step="'+i+'"]');if(!step)continue;

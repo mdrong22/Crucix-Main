@@ -470,6 +470,7 @@ app.get('/api/cycle', (req, res) => {
       autoTrade:      s.autoTrade,
       investmentTypes: s.investmentTypes,
       refreshMinutes: config.refreshIntervalMinutes,
+      marketOpen:     isMarketWindow(),
       serverTime:     Date.now(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -801,9 +802,14 @@ function _isPriceSafe(orderPrice, livePrice, action = null, orderType = null, ma
 }
 
 function formatProposalCard(p) {
-  const expEt = new Date(p.expiresAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+  // timeZoneName:'short' auto-renders CST in winter / CDT during daylight saving.
+  const expCt = new Date(p.expiresAt).toLocaleString('en-US', {
+    timeZone: 'America/Chicago', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+  });
   const priceStr = p.price ? `$${p.price}` : (p.order_type === 'Market' ? 'market' : 'TBD');
   const qty = p.units ? ` × ${p.units}` : (p.notional_value ? ` ($${p.notional_value})` : '');
+  const conf = Number.isFinite(Number(p.confidence)) ? `${Math.round(Number(p.confidence))}%` : String(p.confidence);
   return [
     `${p.action === 'MAINTENANCE' ? '🛠' : '📈'} *${p.title}*`,
     ``,
@@ -811,8 +817,8 @@ function formatProposalCard(p) {
     ``,
     `*${p.side} ${p.ticker}* — ${p.order_type} @ ${priceStr}${qty} · ${p.time_in_force}`,
     p.stopLoss ? `🛑 Hard stop: $${p.stopLoss} (auto-sells, no approval, if breached)` : '',
-    `Confidence: ${p.confidence}${p.horizon ? ` · ${p.horizon}` : ''}`,
-    `⌛ Expires: ${expEt} ET`,
+    `🎯 Confidence: ${conf}${p.horizon ? ` · ${p.horizon}` : ''}`,
+    `⌛ Expires: ${expCt}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -988,7 +994,9 @@ async function acceptProposal(id, ctx) {
   } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
 
   setCycle(ctx?.auto ? 'AUTO_EXECUTED' : 'EXECUTED', `${trade.action} ${trade.symbol} placed`, { ticker: trade.symbol });
-  telegramAlerter.sendTradeAlert?.(trade);
+  // News-channel alert only for AUTO-trades — a manual Accept already edits its own card to ✅,
+  // so a second broadcast to the news channel would be redundant noise.
+  if (ctx?.auto) telegramAlerter.sendTradeAlert?.(trade);
   await telegramAlerter.editMessageText(p.telegramMessageId,
     `✅ *${p.title}* — EXECUTED\n${trade.action} ${trade.symbol} @ ${trade.price ? `$${trade.price}` : trade.order_type} placed.`,
     { chatId: ctx?.chatId });
