@@ -126,7 +126,7 @@ const groqIdeasFallback = config.fallback?.apiKey
   ? new OpenAIProvider({
       name:    'groq',
       apiKey:  config.fallback.apiKey,
-      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.1-8b-instant',
+      model:   process.env.GROQ_IDEAS_MODEL || 'llama-3.3-70b-versatile', // 8b-instant was decommissioned on Groq
       baseUrl: config.redline.phi.baseUrl,
     })
   : null;
@@ -570,7 +570,9 @@ async function runSweepCycle() {
   try {
     // Prelim: Refresh User Trades
     // 1. Run the full briefing sweep
-    const [rawData] = await Promise.all([fullBriefing(), snapTrade.RefreshHoldings()])
+    // RefreshHoldings dropped — SnapTrade deprecated that endpoint (was returning 403). Holdings are
+    // read fresh via FetchUserTrades each sweep anyway; no manual brokerage refresh needed.
+    const rawData = await fullBriefing()
     // 2. Save to runs/latest.json
     writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
     lastSweepTime = new Date().toISOString();
@@ -615,7 +617,7 @@ async function runSweepCycle() {
         }
       } else {
         try {
-          console.log(`[Crucix] Generating LLM trade ideas (${Math.round(ideasElapsed / 60000)}m since last run, delta: ${totalChg} changes, ${criticalChg} critical)...`);
+          console.log(`[Crucix] Generating LLM trade ideas (${Number.isFinite(ideasElapsed) ? Math.round(ideasElapsed / 60000) + 'm' : 'first run'} since last run, delta: ${totalChg} changes, ${criticalChg} critical)...`);
           const previousIdeas = memory.getLastRun()?.ideas || [];
           const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders, groqIdeasFallback);
           if (ideasResult) {
@@ -852,10 +854,13 @@ async function runProposalCycle(context) {
   }
 
   // 3. Single agent → at most one proposal, constrained to the allowed horizons + daily budget.
+  // Fallback = the same Gemini provider the ideas pass uses (proven working) so a transient
+  // Claude Code failure (e.g. a usage-limit window) still yields a proposal.
   setCycle('DECIDING', 'Claude reviewing the sweep…');
+  const analystFallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
-    buyingPower, remaining, priorPending, groqIdeasFallback, settings.investmentTypes,
+    buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
     { buysLeft, buysToday, dailyCap }
   );
   if (!proposal || proposal.action === 'NO_ACTION') {
