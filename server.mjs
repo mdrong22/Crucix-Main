@@ -30,6 +30,7 @@ import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
+import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -476,6 +477,12 @@ app.get('/api/cycle', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// The agent's living plan per stock — its cross-sweep memory (WATCH/ACCUMULATE/HOLD/…).
+app.get('/api/stances', (req, res) => {
+  try { res.json(getStances()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // List all reports (.html and .md for inline viewing; .docx listed for download)
 app.get('/api/reports', (req, res) => {
   try {
@@ -625,7 +632,7 @@ async function runSweepCycle() {
         try {
           console.log(`[Crucix] Generating LLM trade ideas (${Number.isFinite(ideasElapsed) ? Math.round(ideasElapsed / 60000) + 'm' : 'first run'} since last run, delta: ${totalChg} changes, ${criticalChg} critical)...`);
           const previousIdeas = memory.getLastRun()?.ideas || [];
-          const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, JSON.stringify(userPortfolio), accountOrders, groqIdeasFallback);
+          const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders, groqIdeasFallback);
           if (ideasResult) {
             const { llmIdeas, context } = ideasResult;
             currentContext  = context;
@@ -778,7 +785,7 @@ async function runPortfolio() {
     ]);
     const result = await runPortfolioBrief(
       llmProvider, currentData, delta, previousIdeas,
-      JSON.stringify(portfolio), accountOrders
+      portfolio, accountOrders  // pass the array; runPortfolioBrief cleans it via stringifyPortfolio
     );
     console.log('[Crucix] Portfolio Report created at', new Date().toISOString());
     return result?.text ?? null;
@@ -866,11 +873,22 @@ async function runProposalCycle(context) {
   // Claude Code failure (e.g. a usage-limit window) still yields a proposal.
   setCycle('DECIDING', 'Claude reviewing the sweep…');
   const analystFallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
+  const heldTickers = (Array.isArray(portfolio) ? portfolio : []).map(p => p?.symbol).filter(Boolean);
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap }
+    { buysLeft, buysToday, dailyCap }, formatStancesForLLM()
   );
+
+  // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
+  // stances are its memory for next sweep. heldTickers keep owned positions pinned + uncapped.
+  if (proposal?.stanceUpdates?.length || heldTickers.length) {
+    try {
+      const book = applyStanceUpdates(proposal?.stanceUpdates || [], heldTickers);
+      if (proposal?.stanceUpdates?.length) console.log(`[STANCE] Updated ${proposal.stanceUpdates.length} stance(s); book now tracks ${book.length}.`);
+    } catch (err) { console.error('[STANCE] applyStanceUpdates failed:', err.message); }
+  }
+
   if (!proposal || proposal.action === 'NO_ACTION') {
     console.log(`[PROPOSAL] No proposal this cycle${proposal?.desc ? ` — ${proposal.desc}` : ''}.`);
     setCycle('NO_ACTION', (proposal?.desc || 'No trade worth proposing this cycle').slice(0, 140));

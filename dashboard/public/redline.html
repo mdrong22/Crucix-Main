@@ -407,6 +407,36 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         </div>
       </div>
 
+      <!-- STANCE BOOK PANEL — the agent's living plan per stock (cross-sweep memory) -->
+      <style>
+      .stance-panel{margin-top:14px}
+      .st-empty{font-family:var(--orb);font-size:9px;letter-spacing:.12em;color:rgba(200,200,210,.35);padding:10px 2px}
+      .st-row{display:flex;align-items:flex-start;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+      .st-row:last-child{border-bottom:none}
+      .st-tk{font-family:var(--orb);font-weight:700;font-size:12px;color:#fff;min-width:52px;letter-spacing:.04em}
+      .st-tk .held{color:#ffb37a}
+      .st-badge{font-family:var(--orb);font-size:8px;font-weight:700;letter-spacing:.1em;padding:3px 7px;border-radius:4px;white-space:nowrap;text-transform:uppercase}
+      .st-body{flex:1;min-width:0}
+      .st-thesis{font-size:12px;color:rgba(230,230,235,.9);line-height:1.35}
+      .st-plan{font-size:11px;color:rgba(180,185,195,.7);margin-top:2px}
+      .st-plan b{color:#ff8a4a;font-weight:600}
+      .st-conf{font-family:var(--orb);font-size:9px;color:rgba(200,200,210,.55);margin-left:auto;padding-left:8px;white-space:nowrap}
+      /* stance colors */
+      .sb-WATCH{background:rgba(255,204,0,.14);color:#ffd94a}
+      .sb-ACCUMULATE{background:rgba(57,255,110,.14);color:#5cff8f}
+      .sb-HOLD{background:rgba(90,170,255,.14);color:#8ec3ff}
+      .sb-TRIM{background:rgba(255,138,74,.16);color:#ffab6b}
+      .sb-EXIT{background:rgba(255,34,68,.16);color:#ff5c76}
+      .sb-AVOID{background:rgba(150,150,150,.16);color:#b8b8b8}
+      </style>
+      <div class="panel stance-panel">
+        <div class="panel-head">
+          <div class="panel-title">◈ CLAUDE'S STANCE BOOK // LIVING PLAN</div>
+          <div class="panel-badge" id="stCount">—</div>
+        </div>
+        <div id="stanceList"><div class="st-empty">No stances yet — the agent writes its plan on the next sweep.</div></div>
+      </div>
+
       <div class="pf-header">
         <div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
 
@@ -1085,11 +1115,36 @@ async function loadCycle(){
   }catch(e){}
 }
 
+// ── STANCE BOOK panel — the agent's living per-stock plan (cross-sweep memory)
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+async function loadStances(){
+  try{
+    const r=await fetch('/api/stances');if(!r.ok)return;const list=await r.json();
+    const el=document.getElementById('stanceList');const badge=document.getElementById('stCount');
+    if(!Array.isArray(list)||!list.length){
+      el.innerHTML='<div class="st-empty">No stances yet — the agent writes its plan on the next sweep.</div>';
+      if(badge)badge.textContent='0';return;
+    }
+    if(badge)badge.textContent=String(list.length);
+    el.innerHTML=list.map(s=>{
+      const conf=(s.confidence!=null)?('<span class="st-conf">'+s.confidence+'%</span>'):'';
+      const plan=s.plan?('<div class="st-plan"><b>plan:</b> '+esc(s.plan)+'</div>'):'';
+      const tk=s.held?('<span class="held">★ '+esc(s.ticker)+'</span>'):esc(s.ticker);
+      return '<div class="st-row"><div class="st-tk">'+tk+'</div>'+
+        '<div class="st-body"><div style="display:flex;align-items:center;gap:8px">'+
+        '<span class="st-badge sb-'+esc(s.stance)+'">'+esc(s.stance)+'</span>'+conf+'</div>'+
+        '<div class="st-thesis">'+esc(s.thesis||'')+'</div>'+plan+'</div></div>';
+    }).join('');
+  }catch(e){}
+}
+
 loadAll();
 loadReports();
 loadSettings();
 loadCycle();
+loadStances();
 setInterval(loadCycle,3000);
+setInterval(loadStances,20*1000); // stances change at most once per sweep — poll gently
 setInterval(()=>loadAll(),5*60*1000);
 setInterval(()=>loadReports(),2*60*1000); // refresh report list every 2 min
 setInterval(()=>loadSettings(),30*1000);  // keep settings in sync across devices
