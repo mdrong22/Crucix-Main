@@ -23,7 +23,8 @@ export default {
   agent: {
     provider: process.env.AGENT_PROVIDER || 'claude-code',
     apiKey:   process.env.ANTHROPIC_API_KEY || null,  // only used when AGENT_PROVIDER=anthropic
-    model:    process.env.AGENT_MODEL || 'haiku',     // 'haiku' (lighter quota) | 'sonnet' (stronger) | full id
+    // 'sonnet' = the stronger reasoner (default — better trade thinking). 'haiku' = lighter quota. Or a full id.
+    model:    process.env.AGENT_MODEL || 'sonnet',
   },
 
   telegram: {
