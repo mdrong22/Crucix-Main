@@ -819,6 +819,8 @@ function formatProposalCard(p) {
   const qty = p.units ? ` × ${p.units}` : (p.notional_value ? ` ($${p.notional_value})` : '');
   const conf = Number.isFinite(Number(p.confidence)) ? `${Math.round(Number(p.confidence))}%` : String(p.confidence);
   const modelLine = p.model ? `🤖 Model: ${p.provider ? `${p.provider}/` : ''}${p.model}` : '';
+  const sourcesLine = Array.isArray(p.sources) && p.sources.length
+    ? `📎 Based on: ${p.sources.join(' · ')}` : '';
   return [
     `${p.action === 'MAINTENANCE' ? '🛠' : '📈'} *${p.title}*`,
     ``,
@@ -827,6 +829,7 @@ function formatProposalCard(p) {
     `*${p.side} ${p.ticker}* — ${p.order_type} @ ${priceStr}${qty} · ${p.time_in_force}`,
     p.stopLoss ? `🛑 Hard stop: $${p.stopLoss} (auto-sells, no approval, if breached)` : '',
     `🎯 Confidence: ${conf}${p.horizon ? ` · ${p.horizon}` : ''}`,
+    sourcesLine,
     `⌛ Expires: ${expCt}`,
     modelLine,
   ].filter(Boolean).join('\n');
