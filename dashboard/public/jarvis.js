@@ -249,8 +249,16 @@ function renderLeftRail(){
     {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
   ];
-  const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
+  const nukeAnoms=D.nuke.filter(s=>s.anom);
+  const allNormal=nukeAnoms.length===0;
+  // Anomalous sites rise to the top and are highlighted red, with the site name stated.
+  const nukeHtml=[...D.nuke].sort((a,b)=>(b.anom?1:0)-(a.anom?1:0)).map(s=>
+    `<div class="site-row${s.anom?' site-anom':''}"><span>${s.anom?'&#9888; ':''}${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`
+  ).join('');
+  // Name the specific site(s) in the status line rather than a generic "ANOMALY DETECTED".
+  const nukeStatus=allNormal
+    ? '&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL')
+    : '&#9888; '+t('nuclear.anomalyAt','ANOMALY')+': '+nukeAnoms.map(s=>s.site).join(', ');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
   const usd=D.fred.find(f=>f.id==='DTWEXBGS');
@@ -265,7 +273,7 @@ function renderLeftRail(){
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
-      <div class="nuke-ok">${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
+      <div class="nuke-ok${allNormal?'':' nuke-alert'}">${nukeStatus}</div>
       ${nukeHtml}
     </div>
     <div class="g-panel">
@@ -383,8 +391,8 @@ function initGlobe(){
     .arcDashAnimateTime(2000)
     .arcAltitudeAutoScale(0.3)
     .arcLabel(d => d.label || '')
-    // Rings layer (pulsing conflict events)
-    .ringColor(d => t => `rgba(255,120,80,${1-t})`)
+    // Rings layer (pulsing). Nuclear anomalies pulse red; conflict events pulse orange.
+    .ringColor(d => d.color === 'nuke' ? (t => `rgba(255,45,70,${1-t})`) : (t => `rgba(255,120,80,${1-t})`))
     .ringMaxRadius(d => d.maxR || 3)
     .ringPropagationSpeed(d => d.speed || 2)
     .ringRepeatPeriod(d => d.period || 800)
@@ -503,16 +511,27 @@ function plotMarkers(){
     labels.push({lat:cp.lat, lng:cp.lon+1.5, text:cp.label, size:0.3, color:'rgba(179,136,255,0.6)'});
   });
 
-  // === Nuclear sites (yellow) ===
+  // === Nuclear sites (yellow; anomalies red + pulsing ring) ===
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
+  const nukeAnomalyRings=[];
   D.nuke.forEach((n,i)=>{
-    const c=nukeCoords[i]; if(!c) return;
+    // Prefer the real site coords from the data; fall back to the legacy index-matched list.
+    const c = (n.lat!=null && n.lon!=null) ? {lat:n.lat, lon:n.lon} : nukeCoords[i];
+    if(!c) return;
     points.push({
-      lat:c.lat, lng:c.lon, size:0.3, alt:0.012,
-      color: n.anom ? 'rgba(255,95,99,0.9)' : 'rgba(255,224,130,0.8)', type:'nuke', priority:2,
+      lat:c.lat, lng:c.lon, size: n.anom?0.5:0.3, alt:0.012,
+      color: n.anom ? 'rgba(255,95,99,0.95)' : 'rgba(255,224,130,0.8)', type:'nuke', priority:2,
       popHead:n.site, popMeta:'Radiation Monitoring',
-      popText:`Status: ${n.anom?'ANOMALY':'Normal'}<br>Avg CPM: ${n.cpm?.toFixed(1)||'No data'}<br>Readings: ${n.n}`
+      popText:`Status: ${n.anom?'⚠ ANOMALY':'Normal'}<br>Avg CPM: ${n.cpm?.toFixed(1)||'No data'}<br>Readings: ${n.n}`
     });
+    if(n.anom){
+      nukeAnomalyRings.push({
+        lat:c.lat, lng:c.lon, maxR:5, speed:3, period:500,
+        color:'nuke',  // flagged so ringColor() can render it red (see initGlobe)
+        popHead:`☢ ${n.site}`, popMeta:'Radiation Anomaly',
+        popText:`⚠ ELEVATED RADIATION<br>Avg CPM: ${n.cpm?.toFixed(1)||'--'} (normal 10-80)`
+      });
+    }
   });
 
   // === SDR receivers (cyan) ===
@@ -617,7 +636,8 @@ function plotMarkers(){
       popText: `${e.fatalities} fatalities<br>${e.location}, ${e.country}<br>Date: ${e.date}`
     };
   });
-  globe.ringsData(conflictRings);
+  // Merge conflict rings with nuclear-anomaly pulse rings so breached sites visibly pulse.
+  globe.ringsData([...conflictRings, ...nukeAnomalyRings]);
 
   // === FLIGHT CORRIDORS (3D arcs) ===
   const arcs = [];
@@ -855,9 +875,20 @@ function plotFlatMarkers(){
     g.append('rect').attr('x',-4).attr('y',-4).attr('width',8).attr('height',8).attr('fill','rgba(179,136,255,0.7)').attr('stroke','rgba(179,136,255,0.3)').attr('stroke-width',0.5).attr('transform','rotate(45)');
     g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','var(--dim)').attr('font-size','8px').attr('font-family','var(--mono)').text(cp.label);
   });
-  // Nuclear
+  // Nuclear (anomalies render red with a pulsing ring)
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
+  D.nuke.forEach((n,i)=>{
+    const c=(n.lat!=null&&n.lon!=null)?{lat:n.lat,lon:n.lon}:nukeCoords[i]; if(!c)return;
+    if(n.anom){
+      const[x,y]=proj([c.lon,c.lat]); if(x==null||y==null)return;
+      const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
+        .on('click',ev=>{ev.stopPropagation();showPopup(ev,'☢ '+n.site,`⚠ ELEVATED RADIATION<br>CPM: ${n.cpm?.toFixed(1)||'--'} (normal 10-80)`,'Radiation Anomaly')});
+      g.append('circle').attr('class','conflict-ring marker-circle').attr('r',6).attr('data-base-r',6).attr('fill','none').attr('stroke','rgba(255,45,70,0.9)').attr('stroke-width',1.5);
+      g.append('circle').attr('r',3).attr('fill','rgba(255,45,70,0.85)');
+    } else {
+      addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2);
+    }
+  });
   // SDR
   D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
   // OSINT

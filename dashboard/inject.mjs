@@ -418,7 +418,8 @@ export async function synthesize(data) {
     label: c.label || c.name, note: c.note || '', lat: c.lat || 0, lon: c.lon || 0
   }));
   const nuke = (data.sources.Safecast?.sites || []).map(s => ({
-    site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
+    site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0,
+    lat: s.lat ?? null, lon: s.lon ?? null  // real coords so the globe can plot/pulse the actual site
   }));
   const nukeSignals = (data.sources.Safecast?.signals || []).filter(s => s);
   const sdrData = data.sources.KiwiSDR || {};

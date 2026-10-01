@@ -54,6 +54,8 @@ export async function briefing() {
       return {
         site: site.label,
         key,
+        lat: site.lat,
+        lon: site.lon,
         recentReadings: values.length,
         avgCPM,
         maxCPM: values.length > 0 ? Math.max(...values) : null,

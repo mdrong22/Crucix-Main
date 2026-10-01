@@ -93,7 +93,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .layer-sub{font-size:10px;color:var(--dim)}
 .layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
 .nuke-ok{padding:8px;border:1px solid rgba(100,240,200,0.15);background:rgba(100,240,200,0.04);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
+.nuke-ok.nuke-alert{color:var(--danger);border-color:rgba(255,95,99,0.5);background:rgba(255,95,99,0.08);animation:pulse-blink 1.5s ease-in-out infinite}
 .site-row{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;display:flex;justify-content:space-between}
+.site-row.site-anom{color:var(--danger);background:rgba(255,95,99,0.06)}
+.site-row.site-anom .site-val{color:var(--danger)}
 .site-val{font-family:var(--mono);color:var(--accent);font-size:10px}
 .econ-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px}
 .econ-row .elabel{color:var(--dim)}
