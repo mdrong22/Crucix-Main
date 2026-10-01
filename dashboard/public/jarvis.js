@@ -1186,6 +1186,10 @@ function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.pr
 
 // === BOOT SEQUENCE ===
 function runBoot(){
+  // Global idempotency guard — if ANY boot already ran on this page (e.g. a stray inline/legacy
+  // script, or a double-loaded bundle), don't render a second boot sequence over it.
+  if (window.__crucixBooted) return;
+  window.__crucixBooted = true;
   const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} EVENTS</span>` : '<span style="color:var(--warn)">DEGRADED</span>';
   const lines=[
     {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v2.1.0'),delay:0},

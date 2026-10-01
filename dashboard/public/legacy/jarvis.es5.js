@@ -1941,6 +1941,9 @@ function safeExternalUrl(raw) {
 
 // === BOOT SEQUENCE ===
 function runBoot() {
+  // Global idempotency guard — shared with the module build so a page can boot only once.
+  if (window.__crucixBooted) return;
+  window.__crucixBooted = true;
   var _D$acled5;
   var acledStatus = ((_D$acled5 = D.acled) === null || _D$acled5 === void 0 ? void 0 : _D$acled5.totalEvents) > 0 ? "<span class=\"ok\">".concat(D.acled.totalEvents, " EVENTS</span>") : '<span style="color:var(--warn)">DEGRADED</span>';
   var lines = [{
