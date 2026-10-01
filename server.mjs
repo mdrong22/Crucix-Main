@@ -32,6 +32,7 @@ import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
+import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -828,6 +829,7 @@ function formatProposalCard(p) {
     ``,
     `*${p.side} ${p.ticker}* — ${p.order_type} @ ${priceStr}${qty} · ${p.time_in_force}`,
     p.stopLoss ? `🛑 Hard stop: $${p.stopLoss} (auto-sells, no approval, if breached)` : '',
+    p.bearCase ? `🐻 Bear case: ${p.bearCase}` : '',
     `🎯 Confidence: ${conf}${p.horizon ? ` · ${p.horizon}` : ''}`,
     sourcesLine,
     `⌛ Expires: ${expCt}`,
@@ -883,7 +885,7 @@ async function runProposalCycle(context) {
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap }, formatStancesForLLM()
+    { buysLeft, buysToday, dailyCap }, formatStancesForLLM(), buildTrackRecord()
   );
 
   // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
