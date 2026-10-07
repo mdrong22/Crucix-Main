@@ -916,6 +916,15 @@ async function runProposalCycle(context) {
     return;
   }
 
+  // 4a3. Minimum buying-power floor — below it, the agent may still manage positions (MAINTENANCE)
+  //      but new entries are blocked (don't deploy capital you've chosen to reserve).
+  const minBP = Number(settings.minBuyingPower) || 0;
+  if (proposal.action === 'NEW_BUY' && minBP > 0 && Number(buyingPower) < minBP) {
+    console.log(`[PROPOSAL] Dropped — ${proposal.ticker}: buying power $${buyingPower} below minimum $${minBP}.`);
+    setCycle('NO_ACTION', `Buying power $${buyingPower} below your $${minBP} floor — new buys paused`);
+    return;
+  }
+
   // 4b. Don't repeat a ticker already pending.
   if (hasPendingForTicker(proposal.ticker)) {
     console.log(`[PROPOSAL] Skipped — ${proposal.ticker} already has a pending proposal.`);

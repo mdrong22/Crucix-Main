@@ -348,6 +348,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   </div>
   <div class="tb-right">
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll(true)" disabled>↺ REFRESH</button>
+    <button class="gear-btn" id="gearBtn" onclick="openSettings()" title="Agent settings" aria-label="Agent settings">⚙</button>
     <div class="tb-pill">BUYING PWR <span id="buyingPwr">—</span></div>
     <div class="tb-clock" id="clock">--:--:--</div>
   </div>
@@ -508,32 +509,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
     </div>
     <div class="col-side">
 
-      <!-- AGENT SETTINGS PANEL -->
-      <div class="panel">
-        <div class="panel-head">
-          <div class="panel-title">◈ AGENT SETTINGS</div>
-          <div class="panel-badge" id="settingsBadge">—</div>
-        </div>
-        <div style="padding:12px 6px;display:flex;flex-direction:column;gap:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <div>
-              <div style="font-weight:700;font-size:12px;letter-spacing:.5px">AUTO TRADE</div>
-              <div style="font-size:10px;opacity:.6;margin-top:2px">Execute without approval · hard stop-losses always on</div>
-            </div>
-            <button class="report-filter-btn" id="autoTradeBtn" onclick="toggleAutoTrade()">OFF</button>
-          </div>
-          <div>
-            <div style="font-weight:700;font-size:12px;letter-spacing:.5px;margin-bottom:8px">INVESTMENT TYPE</div>
-            <div class="report-filter-bar" id="horizonBar">
-              <button class="report-filter-btn" data-h="INTRADAY" onclick="toggleHorizon('INTRADAY')">SHORT-TERM</button>
-              <button class="report-filter-btn" data-h="SWING" onclick="toggleHorizon('SWING')">SWING</button>
-              <button class="report-filter-btn" data-h="LONG" onclick="toggleHorizon('LONG')">LONG</button>
-            </div>
-            <div style="font-size:10px;opacity:.6;margin-top:6px">Which horizons the agent may propose for new buys.</div>
-          </div>
-        </div>
-      </div>
-
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">◈ ORDERS // LAST 24H</div>
@@ -560,6 +535,67 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       </div>
 
     </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL (opened by the top-bar gear) -->
+<style>
+.gear-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,80,100,.25);color:#ff8a9a;font-size:15px;line-height:1;width:30px;height:28px;border-radius:5px;cursor:pointer;transition:all .15s}
+.gear-btn:hover{background:rgba(255,80,100,.12);color:#fff;transform:rotate(40deg)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(3px);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:60px 16px}
+.modal-overlay.show{display:flex}
+.set-modal{background:#0b0e13;border:1px solid rgba(255,80,100,.35);border-radius:10px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:setPop .18s ease}
+@keyframes setPop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.set-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+.set-head h3{margin:0;font-family:var(--orb,'Orbitron',sans-serif);font-size:12px;letter-spacing:.2em;color:#ff5064;text-transform:uppercase}
+.set-x{background:none;border:none;color:#889;font-size:20px;cursor:pointer;line-height:1}
+.set-x:hover{color:#fff}
+.set-body{padding:18px;display:flex;flex-direction:column;gap:20px}
+.set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.set-lbl{font-weight:700;font-size:12px;letter-spacing:.5px;color:#e8f0ee}
+.set-sub{font-size:10px;opacity:.55;margin-top:3px;max-width:240px;line-height:1.4}
+.set-mode-badge{font-family:var(--orb,'Orbitron',sans-serif);font-size:9px;padding:4px 9px;border-radius:4px;border:1px solid rgba(255,255,255,.12)}
+.set-bp-input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:var(--mono,monospace);font-size:13px;width:120px;padding:6px 8px;border-radius:5px;text-align:right}
+.set-bp-input:focus{outline:none;border-color:#ff5064}
+.set-foot{padding:10px 18px 16px;font-size:10px;opacity:.5;text-align:center}
+</style>
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+  <div class="set-modal">
+    <div class="set-head">
+      <h3>◈ Agent Settings</h3>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="set-mode-badge" id="settingsBadge">—</span>
+        <button class="set-x" onclick="closeSettings()" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div class="set-body">
+      <div class="set-row">
+        <div><div class="set-lbl">AUTO TRADE</div><div class="set-sub">Execute proposals without approval · hard stop-losses always on</div></div>
+        <button class="report-filter-btn" id="autoTradeBtn" onclick="toggleAutoTrade()">OFF</button>
+      </div>
+      <div>
+        <div class="set-lbl" style="margin-bottom:8px">INVESTMENT TYPE</div>
+        <div class="report-filter-bar" id="horizonBar">
+          <button class="report-filter-btn" data-h="INTRADAY" onclick="toggleHorizon('INTRADAY')">SHORT-TERM</button>
+          <button class="report-filter-btn" data-h="SWING" onclick="toggleHorizon('SWING')">SWING</button>
+          <button class="report-filter-btn" data-h="LONG" onclick="toggleHorizon('LONG')">LONG</button>
+        </div>
+        <div class="set-sub" style="margin-top:6px">Which horizons the agent may propose for new buys.</div>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">HIDE LIVING PLAN</div><div class="set-sub">Hide Claude's Stance Book panel from the dashboard</div></div>
+        <button class="report-filter-btn" id="hidePlanBtn" onclick="toggleHidePlan()">OFF</button>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">MIN BUYING POWER</div><div class="set-sub">Agent won't propose new buys below this. Maintenance/exits still allowed. 0 = no floor.</div></div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="opacity:.6">$</span>
+          <input class="set-bp-input" id="minBpInput" type="number" min="0" step="50" value="0"
+                 onchange="saveMinBp(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+        </div>
+      </div>
+    </div>
+    <div class="set-foot">Settings sync across all devices viewing this dashboard.</div>
   </div>
 </div>
 
@@ -1044,17 +1080,29 @@ async function loadAll(manual=false){
   }
 }
 
-// ── AGENT SETTINGS (Auto Trade + Investment Type)
-let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG']};
+// ── AGENT SETTINGS (Auto Trade + Investment Type + Hide Living Plan + Min Buying Power)
+let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,minBuyingPower:0};
 function renderSettings(){
   const btn=document.getElementById('autoTradeBtn');
   if(btn){btn.textContent=_settings.autoTrade?'ON':'OFF';btn.classList.toggle('active',!!_settings.autoTrade);}
   document.querySelectorAll('#horizonBar .report-filter-btn').forEach(b=>{
     b.classList.toggle('active',_settings.investmentTypes.includes(b.dataset.h));
   });
+  const hp=document.getElementById('hidePlanBtn');
+  if(hp){hp.textContent=_settings.hideStancePlan?'ON':'OFF';hp.classList.toggle('active',!!_settings.hideStancePlan);}
+  const bp=document.getElementById('minBpInput');
+  if(bp&&document.activeElement!==bp)bp.value=_settings.minBuyingPower||0;
+  // Apply the hide-living-plan setting to the Stance Book panel live.
+  const sp=document.querySelector('.stance-panel');
+  if(sp)sp.style.display=_settings.hideStancePlan?'none':'';
   const badge=document.getElementById('settingsBadge');
   if(badge)badge.textContent=_settings.autoTrade?'⚡ AUTO':'✋ MANUAL';
 }
+function openSettings(){document.getElementById('settingsModal').classList.add('show');}
+function closeSettings(){document.getElementById('settingsModal').classList.remove('show');}
+function toggleHidePlan(){saveSettings({hideStancePlan:!_settings.hideStancePlan});}
+function saveMinBp(v){const n=Math.max(0,Math.round(Number(v)||0));saveSettings({minBuyingPower:n});}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSettings();});
 async function loadSettings(){
   try{const res=await fetch('/api/settings');if(!res.ok)return;_settings=await res.json();renderSettings();}
   catch(e){console.error('[SETTINGS] load failed',e);}
