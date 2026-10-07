@@ -893,7 +893,8 @@ async function runProposalCycle(context) {
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor }, formatStancesForLLM(), buildTrackRecord()
+    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: settings.strategyMode },
+    formatStancesForLLM(), buildTrackRecord()
   );
 
   // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
