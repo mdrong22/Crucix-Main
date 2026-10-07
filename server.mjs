@@ -21,7 +21,7 @@ import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 // Single-agent proposal system (replaces the Scout/Phi/Theta/Gregor council + debate.mjs).
-import { generateProposal } from './lib/llm/analyst.mjs';
+import { generateProposal, resolveAutoStrategy } from './lib/llm/analyst.mjs';
 import { createProposal, getProposal, getPending, setStatus, attachMessageId, expireStale, hasPendingForTicker, countToday } from './lib/proposals/store.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
@@ -54,6 +54,7 @@ let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from aler
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
 let cachedTheses = [];      // Last derived theses (reused when throttled / across restarts)
+let lastStrategyResolved = null; // Concrete strategy the agent last ran under (what AUTO resolved to)
 
 // ── Decision-cycle status (drives the RedLine "DECISION CYCLE" panel) ──────────
 // stage: SIGNALS → DECIDING → (NO_ACTION | QUIET | AWAITING | EXECUTED | AUTO_EXECUTED | DENIED | EXPIRED)
@@ -472,6 +473,8 @@ app.get('/api/cycle', (req, res) => {
       dailyCap:       config.maxProposalsPerDay || 0,
       autoTrade:      s.autoTrade,
       investmentTypes: s.investmentTypes,
+      strategyMode:   s.strategyMode,
+      strategyEffective: lastStrategyResolved,   // what AUTO last resolved to (null until first run)
       refreshMinutes: config.refreshIntervalMinutes,
       marketOpen:     isMarketWindow(),
       serverTime:     Date.now(),
@@ -890,10 +893,24 @@ async function runProposalCycle(context) {
   setCycle('DECIDING', 'Claude reviewing the sweep…');
   const analystFallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
   const heldTickers = (Array.isArray(portfolio) ? portfolio : []).map(p => p?.symbol).filter(Boolean);
+
+  // Strategy mode — AUTO resolves to a concrete mode from live conditions (VIX, regime, dislocation).
+  const strategyAuto = settings.strategyMode === 'AUTO';
+  let effectiveStrategy = settings.strategyMode;
+  if (strategyAuto) {
+    const vix = Number(currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
+      ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price) || null;
+    const direction = currentData?.delta?.summary?.direction || null;
+    const moverCount = (currentData?.movers?.losers?.length || 0) + (currentData?.movers?.gainers?.length || 0);
+    effectiveStrategy = resolveAutoStrategy({ vix, direction, moverCount });
+    console.log(`[PROPOSAL] 🎚 Strategy AUTO → ${effectiveStrategy} (VIX ${vix ?? '?'}, ${direction || 'n/a'}, ${moverCount} movers).`);
+  }
+  lastStrategyResolved = effectiveStrategy;
+
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: settings.strategyMode },
+    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: effectiveStrategy, strategyAuto },
     formatStancesForLLM(), buildTrackRecord()
   );
 

@@ -585,6 +585,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       <div>
         <div class="set-lbl" style="margin-bottom:8px">STRATEGY MODE</div>
         <div class="report-filter-bar" id="strategyBar">
+          <button class="report-filter-btn" data-m="AUTO" onclick="selectStrategy('AUTO')">AUTO</button>
           <button class="report-filter-btn" data-m="CONSERVATIVE" onclick="selectStrategy('CONSERVATIVE')">CONSERVATIVE</button>
           <button class="report-filter-btn" data-m="BALANCED" onclick="selectStrategy('BALANCED')">BALANCED</button>
           <button class="report-filter-btn" data-m="AGGRESSIVE" onclick="selectStrategy('AGGRESSIVE')">AGGRESSIVE</button>
@@ -1093,11 +1094,13 @@ async function loadAll(manual=false){
 // ── AGENT SETTINGS (Auto Trade + Investment Type + Hide Living Plan + Min Buying Power)
 let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,minBuyingPower:0,strategyMode:'BALANCED'};
 const STRAT_DESC={
+  AUTO:'System picks the mode each sweep from volatility, market regime, and dislocation.',
   CONSERVATIVE:'Capital preservation first. Only A+ setups (conf ≥80, R/R ≥2:1); heavy bias to NO_ACTION.',
   BALANCED:'Default. Act on clearly strong setups; quality over quantity.',
   AGGRESSIVE:'Profit-focused. Lower bar to act (conf ≥60), tighter R/R, chases confirmed momentum.',
   SCALPER:'Quick flips on liquid movers. Fast profit-taking, tighter targets, more frequent proposals.'
 };
+let _strategyEffective=null; // what AUTO last resolved to (from /api/cycle)
 function renderSettings(){
   const btn=document.getElementById('autoTradeBtn');
   if(btn){btn.textContent=_settings.autoTrade?'ON':'OFF';btn.classList.toggle('active',!!_settings.autoTrade);}
@@ -1108,7 +1111,11 @@ function renderSettings(){
     b.classList.toggle('active',_settings.strategyMode===b.dataset.m);
   });
   const sd=document.getElementById('strategyDesc');
-  if(sd)sd.textContent=STRAT_DESC[_settings.strategyMode]||STRAT_DESC.BALANCED;
+  if(sd){
+    let txt=STRAT_DESC[_settings.strategyMode]||STRAT_DESC.BALANCED;
+    if(_settings.strategyMode==='AUTO'&&_strategyEffective)txt+=` · Currently: ${_strategyEffective}`;
+    sd.textContent=txt;
+  }
   const hp=document.getElementById('hidePlanBtn');
   if(hp){hp.textContent=_settings.hideStancePlan?'ON':'OFF';hp.classList.toggle('active',!!_settings.hideStancePlan);}
   const bp=document.getElementById('minBpInput');
@@ -1156,6 +1163,11 @@ async function loadCycle(){
       // Keep the header status in sync without clobbering a live connection error.
       const dot=document.getElementById('statusDot');
       if(dot&&!dot.classList.contains('error'))setStatus('live',marketStatusText());
+    }
+    // Reflect what AUTO strategy last resolved to (if the settings modal is showing it).
+    if(c.strategyEffective!==undefined&&c.strategyEffective!==_strategyEffective){
+      _strategyEffective=c.strategyEffective;
+      if(_settings.strategyMode==='AUTO')renderSettings();
     }
     const m=CYC[c.stage]||CYC.IDLE;
     for(let i=1;i<=4;i++){
