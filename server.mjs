@@ -876,6 +876,14 @@ async function runProposalCycle(context) {
     console.log(`[PROPOSAL] Daily new-buy cap reached (${buysToday}/${dailyCap}) — new entries paused, maintenance still active.`);
   }
 
+  // Min buying-power floor (user setting). Parse BP robustly (SnapTrade may return a string).
+  const minBP = Number(settings.minBuyingPower) || 0;
+  const bpNum = Number(String(buyingPower ?? '').replace(/[^0-9.\-]/g, ''));
+  const bpBelowFloor = minBP > 0 && Number.isFinite(bpNum) && bpNum < minBP;
+  if (bpBelowFloor) {
+    console.log(`[PROPOSAL] Buying power $${bpNum} below your $${minBP} floor — agent restricted to MAINTENANCE only.`);
+  }
+
   // 3. Single agent → at most one proposal, constrained to the allowed horizons + daily budget.
   // Fallback = the same Gemini provider the ideas pass uses (proven working) so a transient
   // Claude Code failure (e.g. a usage-limit window) still yields a proposal.
@@ -885,7 +893,7 @@ async function runProposalCycle(context) {
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap }, formatStancesForLLM(), buildTrackRecord()
+    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor }, formatStancesForLLM(), buildTrackRecord()
   );
 
   // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
@@ -916,12 +924,11 @@ async function runProposalCycle(context) {
     return;
   }
 
-  // 4a3. Minimum buying-power floor — below it, the agent may still manage positions (MAINTENANCE)
-  //      but new entries are blocked (don't deploy capital you've chosen to reserve).
-  const minBP = Number(settings.minBuyingPower) || 0;
-  if (proposal.action === 'NEW_BUY' && minBP > 0 && Number(buyingPower) < minBP) {
-    console.log(`[PROPOSAL] Dropped — ${proposal.ticker}: buying power $${buyingPower} below minimum $${minBP}.`);
-    setCycle('NO_ACTION', `Buying power $${buyingPower} below your $${minBP} floor — new buys paused`);
+  // 4a3. Minimum buying-power floor (backstop) — below it, the agent may still manage positions
+  //      (MAINTENANCE) but new entries are blocked. bpNum/bpBelowFloor computed above.
+  if (proposal.action === 'NEW_BUY' && bpBelowFloor) {
+    console.log(`[PROPOSAL] Dropped — ${proposal.ticker}: buying power $${bpNum} below minimum $${minBP}.`);
+    setCycle('NO_ACTION', `Buying power $${bpNum} below your $${minBP} floor — new buys paused`);
     return;
   }
 
