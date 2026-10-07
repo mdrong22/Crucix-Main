@@ -551,6 +551,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .set-x{background:none;border:none;color:#889;font-size:20px;cursor:pointer;line-height:1}
 .set-x:hover{color:#fff}
 .set-body{padding:18px;display:flex;flex-direction:column;gap:20px}
+.set-section{font-family:var(--orb,'Orbitron',sans-serif);font-size:9px;letter-spacing:.25em;color:rgba(255,80,100,.55);text-transform:uppercase;border-bottom:1px solid rgba(255,80,100,.15);padding-bottom:6px;margin-bottom:-6px}
+.set-section:not(:first-child){margin-top:4px}
 .set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .set-lbl{font-weight:700;font-size:12px;letter-spacing:.5px;color:#e8f0ee}
 .set-sub{font-size:10px;opacity:.55;margin-top:3px;max-width:240px;line-height:1.4}
@@ -569,6 +571,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       </div>
     </div>
     <div class="set-body">
+      <div class="set-section">AGENT</div>
       <div class="set-row">
         <div><div class="set-lbl">AUTO TRADE</div><div class="set-sub">Execute proposals without approval · hard stop-losses always on</div></div>
         <button class="report-filter-btn" id="autoTradeBtn" onclick="toggleAutoTrade()">OFF</button>
@@ -594,16 +597,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         <div class="set-sub" style="margin-top:6px" id="strategyDesc">How aggressively the agent hunts profit. Risk discipline (hard stops, real edge) always applies.</div>
       </div>
       <div class="set-row">
-        <div><div class="set-lbl">HIDE LIVING PLAN</div><div class="set-sub">Hide Claude's Stance Book panel from the dashboard</div></div>
-        <button class="report-filter-btn" id="hidePlanBtn" onclick="toggleHidePlan()">OFF</button>
-      </div>
-      <div class="set-row">
         <div><div class="set-lbl">MIN BUYING POWER</div><div class="set-sub">Agent won't propose new buys below this. Maintenance/exits still allowed. 0 = no floor.</div></div>
         <div style="display:flex;align-items:center;gap:4px">
           <span style="opacity:.6">$</span>
           <input class="set-bp-input" id="minBpInput" type="number" min="0" step="50" value="0"
                  onchange="saveMinBp(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
         </div>
+      </div>
+
+      <div class="set-section">UI</div>
+      <div class="set-row">
+        <div><div class="set-lbl">HIDE LIVING PLAN</div><div class="set-sub">Hide Claude's Stance Book panel from the dashboard</div></div>
+        <button class="report-filter-btn" id="hidePlanBtn" onclick="toggleHidePlan()">OFF</button>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">HIDE CLAUDE DECISION</div><div class="set-sub">Hide the Decision Cycle panel from the dashboard</div></div>
+        <button class="report-filter-btn" id="hideDecisionBtn" onclick="toggleHideDecision()">OFF</button>
       </div>
     </div>
     <div class="set-foot">Settings sync across all devices viewing this dashboard.</div>
@@ -1092,7 +1101,7 @@ async function loadAll(manual=false){
 }
 
 // ── AGENT SETTINGS (Auto Trade + Investment Type + Hide Living Plan + Min Buying Power)
-let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,minBuyingPower:0,strategyMode:'BALANCED'};
+let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,hideDecisionCycle:false,minBuyingPower:0,strategyMode:'BALANCED'};
 const STRAT_DESC={
   AUTO:'System picks the mode each sweep from volatility, market regime, and dislocation.',
   CONSERVATIVE:'Capital preservation first. Only A+ setups (conf ≥80, R/R ≥2:1); heavy bias to NO_ACTION.',
@@ -1118,17 +1127,22 @@ function renderSettings(){
   }
   const hp=document.getElementById('hidePlanBtn');
   if(hp){hp.textContent=_settings.hideStancePlan?'ON':'OFF';hp.classList.toggle('active',!!_settings.hideStancePlan);}
+  const hd=document.getElementById('hideDecisionBtn');
+  if(hd){hd.textContent=_settings.hideDecisionCycle?'ON':'OFF';hd.classList.toggle('active',!!_settings.hideDecisionCycle);}
   const bp=document.getElementById('minBpInput');
   if(bp&&document.activeElement!==bp)bp.value=_settings.minBuyingPower||0;
-  // Apply the hide-living-plan setting to the Stance Book panel live.
+  // Apply the UI hide settings live.
   const sp=document.querySelector('.stance-panel');
   if(sp)sp.style.display=_settings.hideStancePlan?'none':'';
+  const cp=document.querySelector('.cyc-panel');
+  if(cp)cp.style.display=_settings.hideDecisionCycle?'none':'';
   const badge=document.getElementById('settingsBadge');
   if(badge)badge.textContent=_settings.autoTrade?'⚡ AUTO':'✋ MANUAL';
 }
 function openSettings(){document.getElementById('settingsModal').classList.add('show');}
 function closeSettings(){document.getElementById('settingsModal').classList.remove('show');}
 function toggleHidePlan(){saveSettings({hideStancePlan:!_settings.hideStancePlan});}
+function toggleHideDecision(){saveSettings({hideDecisionCycle:!_settings.hideDecisionCycle});}
 function saveMinBp(v){const n=Math.max(0,Math.round(Number(v)||0));saveSettings({minBuyingPower:n});}
 function selectStrategy(m){saveSettings({strategyMode:m});}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSettings();});
