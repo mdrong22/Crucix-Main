@@ -56,6 +56,7 @@ let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from aler
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
 let cachedTheses = [];      // Last derived theses (reused when throttled / across restarts)
+let lastGoodIdeas = [];     // Last non-empty LLM idea set — reused when generation is throttled/fails
 let lastStrategyResolved = null; // Concrete strategy the agent last ran under (what AUTO resolved to)
 
 // ── Decision-cycle status (drives the RedLine "DECISION CYCLE" panel) ──────────
@@ -273,26 +274,28 @@ if (telegramAlerter.isConfigured) {
       if (!positions.length) {
         return `📊 *PORTFOLIO*\nNo open positions.${buyingPower != null ? `\nBuying Power: $${num(buyingPower).toFixed(2)}` : ''}`;
       }
+      const money = n => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
       let totalPnl = 0, totalMktVal = 0;
+      // Mobile-friendly: ticker + signed % on line 1; size, P&L$, value on line 2.
       const rows = positions.map(p => {
         const units = num(p.units), price = num(p.price), avg = num(p.avg_cost);
         const mktVal = price * units, pnl = (price - avg) * units;
         totalPnl += pnl; totalMktVal += mktVal;
         const pct = avg > 0 ? ((price - avg) / avg) * 100 : 0;
         const em = pnl >= 0 ? '🟢' : '🔴';
-        const money = n => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
-        return `${em} *${p.symbol}*  ${units < 1 ? units.toFixed(4) : units} @ $${price.toFixed(2)}\n    P&L: ${pnl >= 0 ? '+' : ''}${money(pnl)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%) · Val $${mktVal.toFixed(2)}`;
+        const qty = units < 1 ? units.toFixed(4) : String(units);
+        return `${em} *${p.symbol}*  ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%\n` +
+               `   ${qty} @ $${price.toFixed(2)} · ${pnl >= 0 ? '+' : ''}${money(pnl)} · $${mktVal.toFixed(2)}`;
       });
       const totEm = totalPnl >= 0 ? '🟢' : '🔴';
       return [
-        `📊 *PORTFOLIO* (${positions.length} position${positions.length > 1 ? 's' : ''})`,
-        ``,
+        `📊 *PORTFOLIO* · ${positions.length} pos`,
         ...rows,
-        ``,
-        `${totEm} *Total P&L: ${totalPnl >= 0 ? '+' : ''}${totalPnl < 0 ? '-' : ''}$${Math.abs(totalPnl).toFixed(2)}*`,
-        `Holdings Value: $${totalMktVal.toFixed(2)}`,
-        totalValue != null ? `Account Value: $${num(totalValue).toFixed(2)}` : '',
-        buyingPower != null ? `Buying Power: $${num(buyingPower).toFixed(2)}` : '',
+        `━━━━━━━━━━`,
+        `${totEm} *Total P&L  ${totalPnl >= 0 ? '+' : ''}${money(totalPnl)}*`,
+        `Holdings  $${totalMktVal.toFixed(2)}`,
+        totalValue != null ? `Account  $${num(totalValue).toFixed(2)}` : '',
+        buyingPower != null ? `Buying Pwr  $${num(buyingPower).toFixed(2)}` : '',
       ].filter(Boolean).join('\n');
     } catch (err) {
       console.error('[Telegram] /info failed:', err.message);
@@ -300,29 +303,30 @@ if (telegramAlerter.isConfigured) {
     }
   });
 
-  // /plan — show the agent's current living plan (stance book).
+  // /plan — show the agent's current living plan (stance book). Mobile-friendly 2-line entries.
   telegramAlerter.onCommand('/plan', async () => {
     const list = getStances();
     if (!list.length) return '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
     const lines = list.map(s => {
       const c = s.confidence != null ? ` ${s.confidence}%` : '';
-      const plan = s.plan ? ` — ${s.plan}` : '';
-      return `${s.held ? '★' : '•'} *${s.ticker}* [${s.stance}${c}] ${s.thesis || ''}${plan}`;
+      const detail = [s.thesis, s.plan ? `plan: ${s.plan}` : ''].filter(Boolean).join(' · ');
+      return `${s.held ? '★' : '•'} *${s.ticker}*  ${s.stance}${c}` + (detail ? `\n   ${detail}` : '');
     });
-    return `📋 *Living Plan* (${list.length})\n` + lines.join('\n');
+    return `📋 *Living Plan* · ${list.length}\n` + lines.join('\n');
   });
 
-  // /propose <query> — user proposes an edit to the living plan; agent accepts/denies/partials.
-  // Accepts "/propose plan buy more NVDA" or "/propose buy more NVDA".
-  telegramAlerter.onCommand('/propose', async (args) => {
+  // /propose <idea> — user proposes an edit to the living plan; agent accepts/denies/partials.
+  // (A leading "plan" is tolerated for back-compat: "/propose plan buy more NVDA".)
+  telegramAlerter.onCommand('/propose', async (args, _msgId, chatId) => {
     let q = String(args || '').trim();
     if (/^plan\b/i.test(q)) q = q.replace(/^plan\b[:,\s]*/i, '').trim();
-    if (!q) return 'Usage: `/propose plan <your idea>` — e.g. `/propose plan start watching URA for a uranium squeeze`';
-    await telegramAlerter.sendMessage('🤔 Evaluating your plan proposal…');
+    if (!q) return 'Usage: `/propose <your idea>` — e.g. `/propose start watching URA for a uranium squeeze`';
+    // Interim "evaluating" message goes to the SAME channel the command came from.
+    await telegramAlerter.sendMessage('🤔 Evaluating your plan proposal…', { chatId });
     const r = await handlePlanProposal(q);
     if (!r.ok) return `⚠️ ${r.error}`;
     const emoji = r.verdict === 'ACCEPT' ? '✅' : r.verdict === 'PARTIAL' ? '〜' : '⛔';
-    const changes = r.applied ? `\nApplied ${r.applied} change(s) — live next sweep.` : '';
+    const changes = r.applied ? `\n_Applied ${r.applied} change(s) — live next sweep._` : '';
     return `${emoji} *${r.verdict}*${r.summary ? ` — ${r.summary}` : ''}\n${r.reasoning}${changes}`;
   });
 
@@ -695,41 +699,43 @@ async function runSweepCycle() {
       const newSignals     = delta?.signals?.new?.length     ?? 0;
       const ideasDeltaQuiet = criticalChg === 0 && totalChg < 3 && newSignals === 0;
 
+      // NOTE: memory.getLastRun() is unreliable here — addRun() already unshifted THIS sweep onto
+      // the stack (and compacts before ideas are set), so it returns the current empty run. We keep
+      // the last successful idea set in a persistent module var (lastGoodIdeas) instead, so every
+      // reuse path (throttled, quiet, failed) shows real ideas rather than a blank panel.
       if (ideasThrottled || ideasDeltaQuiet) {
-        // Reuse previous ideas — preserve context for the dashboard/agent (no LLM call)
-        const lastRun = memory.getLastRun();
-        synthesized.ideas = lastRun?.ideas || [];
-        synthesized.ideasSource = 'cached';
-        // Always rebuild context from fresh sweep data so the agent sees current news
-        // even when the ideas LLM call is throttled (context ≠ ideas — no LLM needed here)
+        // Reuse last good ideas — preserve context for the dashboard/agent (no LLM call).
+        synthesized.ideas = lastGoodIdeas;
+        synthesized.ideasSource = lastGoodIdeas.length ? 'cached' : 'none';
+        // Rebuild context from fresh sweep data so the agent still sees current news.
         currentContext = compactSweepForLLM(synthesized, delta, synthesized.ideas);
-        if (ideasThrottled) {
-          const minsLeft = Math.round((IDEAS_THROTTLE_MS - ideasElapsed) / 60000);
-          console.log(`[Crucix] Ideas throttled — ${minsLeft}m until next run. Reusing ${synthesized.ideas.length} cached ideas. Context rebuilt fresh.`);
-        } else {
-          console.log(`[Crucix] Ideas skipped — delta quiet (${totalChg} changes, ${criticalChg} critical). Reusing ${synthesized.ideas.length} cached ideas. Context rebuilt fresh.`);
-        }
+        const why = ideasThrottled
+          ? `throttled — ${Math.round((IDEAS_THROTTLE_MS - ideasElapsed) / 60000)}m until next run`
+          : `delta quiet (${totalChg} changes, ${criticalChg} critical)`;
+        console.log(`[Crucix] Ideas ${why}. Reusing ${synthesized.ideas.length} cached ideas. Context rebuilt fresh.`);
       } else {
         try {
           console.log(`[Crucix] Generating LLM trade ideas (${Number.isFinite(ideasElapsed) ? Math.round(ideasElapsed / 60000) + 'm' : 'first run'} since last run, delta: ${totalChg} changes, ${criticalChg} critical)...`);
-          const previousIdeas = memory.getLastRun()?.ideas || [];
-          const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas, userPortfolio, accountOrders, groqIdeasFallback);
-          if (ideasResult) {
+          const ideasResult = await generateLLMIdeas(llmProvider, synthesized, delta, lastGoodIdeas, userPortfolio, accountOrders, groqIdeasFallback);
+          if (ideasResult?.llmIdeas?.length > 0) {
             const { llmIdeas, context } = ideasResult;
             currentContext  = context;
             lastIdeasRunAt  = Date.now();
-            synthesized.ideas = llmIdeas || [];
-            synthesized.ideasSource = llmIdeas?.length > 0 ? 'llm' : 'llm-failed';
-            if (llmIdeas?.length > 0) console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
+            synthesized.ideas = llmIdeas;
+            synthesized.ideasSource = 'llm';
+            lastGoodIdeas = llmIdeas;   // remember for future reuse
+            console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
           } else {
-            synthesized.ideas = [];
-            synthesized.ideasSource = 'llm-failed';
-            console.warn('[Crucix] LLM ideas returned null — sweep continues, using prior context for debate.');
+            // Generation failed/empty — keep the last good ideas so the dashboard never goes blank.
+            synthesized.ideas = lastGoodIdeas;
+            synthesized.ideasSource = lastGoodIdeas.length ? 'cached-fallback' : 'llm-failed';
+            if (ideasResult?.context) currentContext = ideasResult.context;
+            console.warn(`[Crucix] LLM ideas empty/failed — reusing ${lastGoodIdeas.length} prior idea(s).`);
           }
         } catch (llmErr) {
           console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
+          synthesized.ideas = lastGoodIdeas;
+          synthesized.ideasSource = lastGoodIdeas.length ? 'cached-fallback' : 'llm-failed';
         }
       }
     } else {
