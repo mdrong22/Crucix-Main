@@ -421,6 +421,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       .st-thesis{font-size:12px;color:rgba(230,230,235,.9);line-height:1.35}
       .st-plan{font-size:11px;color:rgba(180,185,195,.7);margin-top:2px}
       .st-plan b{color:#ff8a4a;font-weight:600}
+      .st-exit{font-size:11px;color:rgba(180,185,195,.7);margin-top:2px}
+      .st-exit b{color:#ff5f63;font-weight:600}
       .st-conf{font-family:var(--orb);font-size:9px;color:rgba(200,200,210,.55);margin-left:auto;padding-left:8px;white-space:nowrap}
       /* stance colors */
       .sb-WATCH{background:rgba(255,204,0,.14);color:#ffd94a}
@@ -1278,12 +1280,13 @@ async function loadStances(){
     if(badge)badge.textContent=String(list.length);
     el.innerHTML=list.map(s=>{
       const conf=(s.confidence!=null)?('<span class="st-conf">'+s.confidence+'%</span>'):'';
-      const plan=s.plan?('<div class="st-plan"><b>plan:</b> '+esc(s.plan)+'</div>'):'';
+      const plan=s.plan?('<div class="st-plan"><b>entry:</b> '+esc(s.plan)+'</div>'):'';
+      const exit=s.exit?('<div class="st-exit"><b>sell when:</b> '+esc(s.exit)+'</div>'):'';
       const tk=s.held?('<span class="held">★ '+esc(s.ticker)+'</span>'):esc(s.ticker);
       return '<div class="st-row"><div class="st-tk">'+tk+'</div>'+
         '<div class="st-body"><div style="display:flex;align-items:center;gap:8px">'+
         '<span class="st-badge sb-'+esc(s.stance)+'">'+esc(s.stance)+'</span>'+conf+'</div>'+
-        '<div class="st-thesis">'+esc(s.thesis||'')+'</div>'+plan+'</div></div>';
+        '<div class="st-thesis">'+esc(s.thesis||'')+'</div>'+plan+exit+'</div></div>';
     }).join('');
   }catch(e){}
 }

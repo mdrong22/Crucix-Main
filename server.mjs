@@ -310,7 +310,7 @@ if (telegramAlerter.isConfigured) {
     if (!list.length) return '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
     const lines = list.map(s => {
       const c = s.confidence != null ? ` ${s.confidence}%` : '';
-      const detail = [s.thesis, s.plan ? `plan: ${s.plan}` : ''].filter(Boolean).join(' · ');
+      const detail = [s.thesis, s.plan ? `entry: ${s.plan}` : '', s.exit ? `sell: ${s.exit}` : ''].filter(Boolean).join(' · ');
       return `${s.held ? '★' : '•'} *${s.ticker}*  ${s.stance}${c}` + (detail ? `\n   ${detail}` : '');
     });
     return `📋 *Living Plan* · ${list.length}\n` + lines.join('\n');
