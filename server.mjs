@@ -260,6 +260,46 @@ if (telegramAlerter.isConfigured) {
     return formatToTelegramMarkdown(res)
     });
 
+  // /info — portfolio snapshot: holdings, per-position P&L, total P&L, value, buying power.
+  telegramAlerter.onCommand('/info', async () => {
+    try {
+      const [portfolio, buyingPower, totalValue] = await Promise.all([
+        snapTrade.FetchUserTrades(),
+        snapTrade.FetchAccountBuyingPower().catch(() => null),
+        snapTrade.FetchAccountTotalValue().catch(() => null),
+      ]);
+      const num = v => Number(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+      const positions = Array.isArray(portfolio) ? portfolio : [];
+      if (!positions.length) {
+        return `📊 *PORTFOLIO*\nNo open positions.${buyingPower != null ? `\nBuying Power: $${num(buyingPower).toFixed(2)}` : ''}`;
+      }
+      let totalPnl = 0, totalMktVal = 0;
+      const rows = positions.map(p => {
+        const units = num(p.units), price = num(p.price), avg = num(p.avg_cost);
+        const mktVal = price * units, pnl = (price - avg) * units;
+        totalPnl += pnl; totalMktVal += mktVal;
+        const pct = avg > 0 ? ((price - avg) / avg) * 100 : 0;
+        const em = pnl >= 0 ? '🟢' : '🔴';
+        const money = n => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+        return `${em} *${p.symbol}*  ${units < 1 ? units.toFixed(4) : units} @ $${price.toFixed(2)}\n    P&L: ${pnl >= 0 ? '+' : ''}${money(pnl)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%) · Val $${mktVal.toFixed(2)}`;
+      });
+      const totEm = totalPnl >= 0 ? '🟢' : '🔴';
+      return [
+        `📊 *PORTFOLIO* (${positions.length} position${positions.length > 1 ? 's' : ''})`,
+        ``,
+        ...rows,
+        ``,
+        `${totEm} *Total P&L: ${totalPnl >= 0 ? '+' : ''}${totalPnl < 0 ? '-' : ''}$${Math.abs(totalPnl).toFixed(2)}*`,
+        `Holdings Value: $${totalMktVal.toFixed(2)}`,
+        totalValue != null ? `Account Value: $${num(totalValue).toFixed(2)}` : '',
+        buyingPower != null ? `Buying Power: $${num(buyingPower).toFixed(2)}` : '',
+      ].filter(Boolean).join('\n');
+    } catch (err) {
+      console.error('[Telegram] /info failed:', err.message);
+      return '⚠️ Could not fetch portfolio info.';
+    }
+  });
+
   // /plan — show the agent's current living plan (stance book).
   telegramAlerter.onCommand('/plan', async () => {
     const list = getStances();
