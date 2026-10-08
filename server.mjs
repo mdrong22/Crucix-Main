@@ -17,7 +17,7 @@ import { generateLLMIdeas, runPortfolioBrief, compactSweepForLLM } from './lib/l
 import { generateLLMTheses } from './lib/llm/thesis.mjs';
 import { getSetupTechnicals } from './apis/sources/alpaca.mjs';
 import { OpenAIProvider } from './lib/llm/openai.mjs';
-import { formatToTelegramMarkdown, TelegramAlerter } from './lib/alerts/telegram.mjs';
+import { formatToTelegramMarkdown, escapeMd, TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 // Single-agent proposal system (replaces the Scout/Phi/Theta/Gregor council + debate.mjs).
@@ -310,8 +310,10 @@ if (telegramAlerter.isConfigured) {
     if (!list.length) return '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
     const lines = list.map(s => {
       const c = s.confidence != null ? ` ${s.confidence}%` : '';
-      const detail = [s.thesis, s.plan ? `entry: ${s.plan}` : '', s.exit ? `sell: ${s.exit}` : ''].filter(Boolean).join(' · ');
-      return `${s.held ? '★' : '•'} *${s.ticker}*  ${s.stance}${c}` + (detail ? `\n   ${detail}` : '');
+      // Escape LLM free-text so stray * _ [ ` don't break Telegram Markdown parsing.
+      const detail = [s.thesis, s.plan ? `entry: ${s.plan}` : '', s.exit ? `sell: ${s.exit}` : '']
+        .filter(Boolean).map(escapeMd).join(' · ');
+      return `${s.held ? '★' : '•'} *${escapeMd(s.ticker)}*  ${escapeMd(s.stance)}${c}` + (detail ? `\n   ${detail}` : '');
     });
     return `📋 *Living Plan* · ${list.length}\n` + lines.join('\n');
   });
@@ -328,7 +330,7 @@ if (telegramAlerter.isConfigured) {
     if (!r.ok) return `⚠️ ${r.error}`;
     const emoji = r.verdict === 'ACCEPT' ? '✅' : r.verdict === 'PARTIAL' ? '〜' : '⛔';
     const changes = r.applied ? `\n_Applied ${r.applied} change(s) — live next sweep._` : '';
-    return `${emoji} *${r.verdict}*${r.summary ? ` — ${r.summary}` : ''}\n${r.reasoning}${changes}`;
+    return `${emoji} *${r.verdict}*${r.summary ? ` — ${escapeMd(r.summary)}` : ''}\n${escapeMd(r.reasoning)}${changes}`;
   });
 
   // Inline Accept/Deny buttons on proposal cards route here.
