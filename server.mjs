@@ -32,6 +32,8 @@ import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
+import { evaluatePlanProposal } from './lib/llm/planProposal.mjs';
+import { generatePlanReport } from './lib/reports/planReport.mjs';
 import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -257,6 +259,32 @@ if (telegramAlerter.isConfigured) {
     const res = await runPortfolio().catch(err => {telegramAlerter.sendMessage("Failed to get Portfolio Briefing"); console.error('[Crucix] Manual sweep failed:', err.message)});
     return formatToTelegramMarkdown(res)
     });
+
+  // /plan — show the agent's current living plan (stance book).
+  telegramAlerter.onCommand('/plan', async () => {
+    const list = getStances();
+    if (!list.length) return '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
+    const lines = list.map(s => {
+      const c = s.confidence != null ? ` ${s.confidence}%` : '';
+      const plan = s.plan ? ` — ${s.plan}` : '';
+      return `${s.held ? '★' : '•'} *${s.ticker}* [${s.stance}${c}] ${s.thesis || ''}${plan}`;
+    });
+    return `📋 *Living Plan* (${list.length})\n` + lines.join('\n');
+  });
+
+  // /propose <query> — user proposes an edit to the living plan; agent accepts/denies/partials.
+  // Accepts "/propose plan buy more NVDA" or "/propose buy more NVDA".
+  telegramAlerter.onCommand('/propose', async (args) => {
+    let q = String(args || '').trim();
+    if (/^plan\b/i.test(q)) q = q.replace(/^plan\b[:,\s]*/i, '').trim();
+    if (!q) return 'Usage: `/propose plan <your idea>` — e.g. `/propose plan start watching URA for a uranium squeeze`';
+    await telegramAlerter.sendMessage('🤔 Evaluating your plan proposal…');
+    const r = await handlePlanProposal(q);
+    if (!r.ok) return `⚠️ ${r.error}`;
+    const emoji = r.verdict === 'ACCEPT' ? '✅' : r.verdict === 'PARTIAL' ? '〜' : '⛔';
+    const changes = r.applied ? `\nApplied ${r.applied} change(s) — live next sweep.` : '';
+    return `${emoji} *${r.verdict}*${r.summary ? ` — ${r.summary}` : ''}\n${r.reasoning}${changes}`;
+  });
 
   // Inline Accept/Deny buttons on proposal cards route here.
   telegramAlerter.onCallback(async (action, id, ctx) => {
@@ -486,6 +514,14 @@ app.get('/api/cycle', (req, res) => {
 app.get('/api/stances', (req, res) => {
   try { res.json(getStances()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// User proposes an edit to the living plan → agent accepts/denies/partially accepts.
+app.post('/api/propose-plan', express.json(), async (req, res) => {
+  try {
+    const result = await handlePlanProposal(req.body?.query);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // List all reports (.html and .md for inline viewing; .docx listed for download)
@@ -1079,6 +1115,37 @@ async function denyProposal(id, ctx) {
     `❌ *${p.title}* — DENIED\nNo order placed.`, { chatId: ctx?.chatId });
   console.log(`[PROPOSAL] ❌ Denied — ${p.ticker}`);
   return 'Denied';
+}
+
+// ── User plan proposal — evaluate a user's proposed edit to the living plan. ────
+// Shared by the dashboard modal (/api/propose-plan) and the Telegram /propose command.
+// On ACCEPT/PARTIAL, the stance updates are applied to the book (held flags preserved) and
+// take effect on the next sweep. Always writes a report to the dashboard report viewer.
+async function handlePlanProposal(query) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: false, error: 'Empty proposal.' };
+  if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
+
+  const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
+  const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback);
+  if (!result) return { ok: false, error: 'Could not evaluate the proposal (LLM unavailable).' };
+
+  let applied = 0;
+  if (result.verdict !== 'DENY' && result.stanceUpdates?.length) {
+    try {
+      // Preserve current held flags (a plan edit never changes holdings).
+      const held = getStances().filter(s => s.held).map(s => s.ticker);
+      applyStanceUpdates(result.stanceUpdates, held);
+      applied = result.stanceUpdates.length;
+    } catch (err) { console.error('[PlanProposal] applyStanceUpdates failed:', err.message); }
+  }
+
+  let reportFile = null;
+  try { reportFile = generatePlanReport({ query: q, ...result }); }
+  catch (err) { console.error('[PlanProposal] report failed:', err.message); }
+
+  console.log(`[PlanProposal] ${result.verdict} — "${q.slice(0, 60)}" → ${applied} change(s) applied.`);
+  return { ok: true, ...result, applied, reportFile };
 }
 
 // === Startup ===

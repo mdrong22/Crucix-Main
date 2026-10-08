@@ -433,7 +433,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
       <div class="panel stance-panel">
         <div class="panel-head">
           <div class="panel-title">◈ CLAUDE'S STANCE BOOK // LIVING PLAN</div>
-          <div class="panel-badge" id="stCount">—</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="propose-btn" onclick="openPropose()">✎ PROPOSE A PLAN</button>
+            <div class="panel-badge" id="stCount">—</div>
+          </div>
         </div>
         <div id="stanceList"><div class="st-empty">No stances yet — the agent writes its plan on the next sweep.</div></div>
       </div>
@@ -561,6 +564,35 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .set-bp-input:focus{outline:none;border-color:#ff5064}
 .set-foot{padding:10px 18px 16px;font-size:10px;opacity:.5;text-align:center}
 </style>
+<!-- PROPOSE A PLAN MODAL -->
+<style>
+.propose-btn{background:rgba(255,80,100,.08);border:1px solid rgba(255,80,100,.35);color:#ff8a9a;font-family:var(--orb,'Orbitron',sans-serif);font-size:8px;letter-spacing:.12em;padding:5px 9px;border-radius:4px;cursor:pointer;transition:all .15s}
+.propose-btn:hover{background:rgba(255,80,100,.18);color:#fff}
+.pp-body{padding:18px;display:flex;flex-direction:column;gap:12px}
+.pp-sub{font-size:11px;opacity:.6;line-height:1.5}
+.pp-input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:var(--mono,monospace);font-size:12px;padding:10px;border-radius:6px;min-height:84px;resize:vertical;width:100%}
+.pp-input:focus{outline:none;border-color:#ff5064}
+.pp-submit{background:#ff5064;border:none;color:#fff;font-family:var(--orb,'Orbitron',sans-serif);font-size:10px;letter-spacing:.12em;padding:10px;border-radius:6px;cursor:pointer;font-weight:700}
+.pp-submit:disabled{opacity:.5;cursor:default}
+.pp-result{border-radius:6px;padding:12px;font-size:12px;line-height:1.5;display:none}
+.pp-result.show{display:block}
+.pp-verdict{font-family:var(--orb,'Orbitron',sans-serif);font-size:11px;letter-spacing:.1em;font-weight:700;margin-bottom:6px}
+.v-ACCEPT{color:#39ff6e}.v-PARTIAL{color:#ffcc00}.v-DENY{color:#ff5064}
+</style>
+<div class="modal-overlay" id="proposeModal" onclick="if(event.target===this)closePropose()">
+  <div class="set-modal">
+    <div class="set-head">
+      <h3>✎ Propose a Plan</h3>
+      <button class="set-x" onclick="closePropose()" aria-label="Close">×</button>
+    </div>
+    <div class="pp-body">
+      <div class="pp-sub">Suggest an edit to Claude's living plan — a stock to watch, a stance to change, a thesis to drop. Claude will <b>accept</b>, <b>partially accept</b>, or <b>deny</b> it, log a report, and apply accepted changes on the next sweep.</div>
+      <textarea class="pp-input" id="ppInput" placeholder="e.g. Start watching URA for a uranium-fuel squeeze; accumulate under $32."></textarea>
+      <button class="pp-submit" id="ppSubmit" onclick="submitPropose()">SUBMIT TO CLAUDE</button>
+      <div class="pp-result" id="ppResult"></div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)closeSettings()">
   <div class="set-modal">
     <div class="set-head">
@@ -1143,9 +1175,31 @@ function openSettings(){document.getElementById('settingsModal').classList.add('
 function closeSettings(){document.getElementById('settingsModal').classList.remove('show');}
 function toggleHidePlan(){saveSettings({hideStancePlan:!_settings.hideStancePlan});}
 function toggleHideDecision(){saveSettings({hideDecisionCycle:!_settings.hideDecisionCycle});}
+// ── PROPOSE A PLAN
+function openPropose(){document.getElementById('proposeModal').classList.add('show');document.getElementById('ppResult').classList.remove('show');setTimeout(()=>document.getElementById('ppInput').focus(),80);}
+function closePropose(){document.getElementById('proposeModal').classList.remove('show');}
+async function submitPropose(){
+  const input=document.getElementById('ppInput'),btn=document.getElementById('ppSubmit'),out=document.getElementById('ppResult');
+  const query=input.value.trim();
+  if(!query){input.focus();return;}
+  btn.disabled=true;btn.textContent='CLAUDE IS DECIDING…';out.classList.remove('show');
+  try{
+    const res=await fetch('/api/propose-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+    const r=await res.json();
+    if(!r.ok){out.innerHTML=`<div class="pp-verdict v-DENY">⚠️ ERROR</div>${esc(r.error||'Failed')}`;}
+    else{
+      const em=r.verdict==='ACCEPT'?'✅':r.verdict==='PARTIAL'?'〜':'⛔';
+      const ch=r.applied?`<div style="margin-top:8px;opacity:.7">Applied ${r.applied} change(s) — live next sweep.</div>`:'';
+      out.innerHTML=`<div class="pp-verdict v-${r.verdict}">${em} ${r.verdict}${r.summary?' — '+esc(r.summary):''}</div>${esc(r.reasoning||'')}${ch}`;
+      loadStances();loadReports();
+    }
+    out.classList.add('show');
+  }catch(e){out.innerHTML=`<div class="pp-verdict v-DENY">⚠️ ERROR</div>${esc(e.message)}`;out.classList.add('show');}
+  finally{btn.disabled=false;btn.textContent='SUBMIT TO CLAUDE';}
+}
 function saveMinBp(v){const n=Math.max(0,Math.round(Number(v)||0));saveSettings({minBuyingPower:n});}
 function selectStrategy(m){saveSettings({strategyMode:m});}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSettings();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();closePropose();}});
 async function loadSettings(){
   try{const res=await fetch('/api/settings');if(!res.ok)return;_settings=await res.json();renderSettings();}
   catch(e){console.error('[SETTINGS] load failed',e);}
