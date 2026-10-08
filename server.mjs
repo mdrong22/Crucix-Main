@@ -255,11 +255,12 @@ if (telegramAlerter.isConfigured) {
     return sections.join('\n');
   });
 
-  telegramAlerter.onCommand('/portfolio', async () => {
-    if (sweepInProgress) {console.log('[Crucix] Sweep already in progress, skipping'); return '🔄 Sweep already in progress. Please wait.'};
-    const res = await runPortfolio().catch(err => {telegramAlerter.sendMessage("Failed to get Portfolio Briefing"); console.error('[Crucix] Manual sweep failed:', err.message)});
-    return formatToTelegramMarkdown(res)
-    });
+  telegramAlerter.onCommand('/portfolio', async (_args, _msgId, chatId) => {
+    if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
+    const res = await runPortfolio().catch(err => { console.error('[Crucix] /portfolio failed:', err.message); return null; });
+    // Fallback so the channel always gets a reply (runPortfolio returns null before the first sweep).
+    return formatToTelegramMarkdown(res) || '📊 No portfolio briefing yet — try again after the first sweep completes. (Tip: /info for a live snapshot.)';
+  });
 
   // /info — portfolio snapshot: holdings, per-position P&L, total P&L, value, buying power.
   telegramAlerter.onCommand('/info', async () => {
