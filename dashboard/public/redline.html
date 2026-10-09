@@ -541,13 +541,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 .gear-btn:hover{background:rgba(255,80,100,.12);color:#fff;transform:rotate(40deg)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(3px);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:60px 16px}
 .modal-overlay.show{display:flex}
-.set-modal{background:#0b0e13;border:1px solid rgba(255,80,100,.35);border-radius:10px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:setPop .18s ease}
+.set-modal{background:#0b0e13;border:1px solid rgba(255,80,100,.35);border-radius:10px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:setPop .18s ease;display:flex;flex-direction:column;max-height:calc(100vh - 120px)}
 @keyframes setPop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 .set-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
 .set-head h3{margin:0;font-family:var(--orb,'Orbitron',sans-serif);font-size:12px;letter-spacing:.2em;color:#ff5064;text-transform:uppercase}
 .set-x{background:none;border:none;color:#889;font-size:20px;cursor:pointer;line-height:1}
 .set-x:hover{color:#fff}
-.set-body{padding:18px;display:flex;flex-direction:column;gap:20px}
+.set-body{padding:18px;display:flex;flex-direction:column;gap:20px;overflow-y:auto;flex:1;min-height:0}
+.set-head,.set-foot{flex-shrink:0}
 .set-section{font-family:var(--orb,'Orbitron',sans-serif);font-size:9px;letter-spacing:.25em;color:rgba(255,80,100,.55);text-transform:uppercase;border-bottom:1px solid rgba(255,80,100,.15);padding-bottom:6px;margin-bottom:-6px}
 .set-section:not(:first-child){margin-top:4px}
 .set-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -562,7 +563,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 <style>
 .propose-btn{background:rgba(255,80,100,.08);border:1px solid rgba(255,80,100,.35);color:#ff8a9a;font-family:var(--orb,'Orbitron',sans-serif);font-size:8px;letter-spacing:.12em;padding:5px 9px;border-radius:4px;cursor:pointer;transition:all .15s}
 .propose-btn:hover{background:rgba(255,80,100,.18);color:#fff}
-.pp-body{padding:18px;display:flex;flex-direction:column;gap:12px}
+.pp-body{padding:18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;min-height:0}
 .pp-sub{font-size:11px;opacity:.6;line-height:1.5}
 .pp-input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);color:#fff;font-family:var(--mono,monospace);font-size:12px;padding:10px;border-radius:6px;min-height:84px;resize:vertical;width:100%}
 .pp-input:focus{outline:none;border-color:#ff5064}
