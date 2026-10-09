@@ -34,7 +34,7 @@ import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stanc
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal } from './lib/llm/planProposal.mjs';
 import { generatePlanReport } from './lib/reports/planReport.mjs';
-import { getDirectives, addDirective, removeDirective, clearDirectives, formatDirectivesForLLM } from './lib/directives/store.mjs';
+import { getDirectives, addDirective, formatDirectivesForLLM } from './lib/directives/store.mjs';
 import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -579,16 +579,6 @@ app.post('/api/propose-plan', express.json(), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Standing user directives (general instructions the agent follows each sweep).
-app.get('/api/directives', (req, res) => {
-  try { res.json(getDirectives()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/directives/:id', (req, res) => {
-  try { res.json(removeDirective(req.params.id)); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/directives', (req, res) => {
-  try { res.json(clearDirectives()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // List all reports (.html and .md for inline viewing; .docx listed for download)
 app.get('/api/reports', (req, res) => {
