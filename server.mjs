@@ -34,6 +34,7 @@ import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stanc
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal } from './lib/llm/planProposal.mjs';
 import { generatePlanReport } from './lib/reports/planReport.mjs';
+import { getDirectives, addDirective, removeDirective, clearDirectives, formatDirectivesForLLM } from './lib/directives/store.mjs';
 import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -304,10 +305,14 @@ if (telegramAlerter.isConfigured) {
     }
   });
 
-  // /plan — show the agent's current living plan (stance book). Mobile-friendly 2-line entries.
+  // /plan — show the agent's current living plan (stance book + standing directives).
   telegramAlerter.onCommand('/plan', async () => {
     const list = getStances();
-    if (!list.length) return '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
+    const dirs = getDirectives();
+    const dirBlock = dirs.length
+      ? `🧭 *Directives*\n` + dirs.map(d => `• ${escapeMd(d.text)}`).join('\n') + '\n\n'
+      : '';
+    if (!list.length) return dirBlock + '📋 *Living Plan* — empty. The agent writes it on the next sweep.';
     const lines = list.map(s => {
       const c = s.confidence != null ? ` ${s.confidence}%` : '';
       // Escape LLM free-text so stray * _ [ ` don't break Telegram Markdown parsing.
@@ -315,7 +320,7 @@ if (telegramAlerter.isConfigured) {
         .filter(Boolean).map(escapeMd).join(' · ');
       return `${s.held ? '★' : '•'} *${escapeMd(s.ticker)}*  ${escapeMd(s.stance)}${c}` + (detail ? `\n   ${detail}` : '');
     });
-    return `📋 *Living Plan* · ${list.length}\n` + lines.join('\n');
+    return dirBlock + `📋 *Living Plan* · ${list.length}\n` + lines.join('\n');
   });
 
   // /propose <idea> — user proposes an edit to the living plan; agent accepts/denies/partials.
@@ -329,7 +334,10 @@ if (telegramAlerter.isConfigured) {
     const r = await handlePlanProposal(q);
     if (!r.ok) return `⚠️ ${r.error}`;
     const emoji = r.verdict === 'ACCEPT' ? '✅' : r.verdict === 'PARTIAL' ? '〜' : '⛔';
-    const changes = r.applied ? `\n_Applied ${r.applied} change(s) — live next sweep._` : '';
+    const bits = [];
+    if (r.applied) bits.push(`${r.applied} stance change(s)`);
+    if (r.directiveAdded) bits.push('new directive');
+    const changes = bits.length ? `\n_Applied ${bits.join(' + ')} — live next sweep._` : '';
     return `${emoji} *${r.verdict}*${r.summary ? ` — ${escapeMd(r.summary)}` : ''}\n${escapeMd(r.reasoning)}${changes}`;
   });
 
@@ -569,6 +577,17 @@ app.post('/api/propose-plan', express.json(), async (req, res) => {
     const result = await handlePlanProposal(req.body?.query);
     res.status(result.ok ? 200 : 400).json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Standing user directives (general instructions the agent follows each sweep).
+app.get('/api/directives', (req, res) => {
+  try { res.json(getDirectives()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/directives/:id', (req, res) => {
+  try { res.json(removeDirective(req.params.id)); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/directives', (req, res) => {
+  try { res.json(clearDirectives()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // List all reports (.html and .md for inline viewing; .docx listed for download)
@@ -996,7 +1015,7 @@ async function runProposalCycle(context) {
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
     { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: effectiveStrategy, strategyAuto },
-    formatStancesForLLM(), buildTrackRecord()
+    formatStancesForLLM(), buildTrackRecord(), formatDirectivesForLLM()
   );
 
   // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
@@ -1179,22 +1198,28 @@ async function handlePlanProposal(query) {
   const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback);
   if (!result) return { ok: false, error: 'Could not evaluate the proposal (LLM unavailable).' };
 
-  let applied = 0;
-  if (result.verdict !== 'DENY' && result.stanceUpdates?.length) {
-    try {
-      // Preserve current held flags (a plan edit never changes holdings).
-      const held = getStances().filter(s => s.held).map(s => s.ticker);
-      applyStanceUpdates(result.stanceUpdates, held);
-      applied = result.stanceUpdates.length;
-    } catch (err) { console.error('[PlanProposal] applyStanceUpdates failed:', err.message); }
+  let applied = 0, directiveAdded = false;
+  if (result.verdict !== 'DENY') {
+    if (result.stanceUpdates?.length) {
+      try {
+        // Preserve current held flags (a plan edit never changes holdings).
+        const held = getStances().filter(s => s.held).map(s => s.ticker);
+        applyStanceUpdates(result.stanceUpdates, held);
+        applied = result.stanceUpdates.length;
+      } catch (err) { console.error('[PlanProposal] applyStanceUpdates failed:', err.message); }
+    }
+    if (result.directive) {
+      try { addDirective(result.directive); directiveAdded = true; }
+      catch (err) { console.error('[PlanProposal] addDirective failed:', err.message); }
+    }
   }
 
   let reportFile = null;
   try { reportFile = generatePlanReport({ query: q, ...result }); }
   catch (err) { console.error('[PlanProposal] report failed:', err.message); }
 
-  console.log(`[PlanProposal] ${result.verdict} — "${q.slice(0, 60)}" → ${applied} change(s) applied.`);
-  return { ok: true, ...result, applied, reportFile };
+  console.log(`[PlanProposal] ${result.verdict} — "${q.slice(0, 60)}" → ${applied} stance change(s)${directiveAdded ? ' + directive' : ''}.`);
+  return { ok: true, ...result, applied, directiveAdded, reportFile };
 }
 
 // === Startup ===
