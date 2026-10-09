@@ -37,6 +37,8 @@ import { generatePlanReport } from './lib/reports/planReport.mjs';
 import { getDirectives, addDirective, formatDirectivesForLLM } from './lib/directives/store.mjs';
 import { evaluateBreaker, getBreakerState } from './lib/risk/circuitBreaker.mjs';
 import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
+import { buildCalibration } from './lib/llm/calibration.mjs';
+import { fetchTickerQuotes } from './apis/sources/yfinance.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -61,6 +63,32 @@ let cachedTheses = [];      // Last derived theses (reused when throttled / acro
 let lastGoodIdeas = [];     // Last non-empty LLM idea set — reused when generation is throttled/fails
 let lastStrategyResolved = null; // Concrete strategy the agent last ran under (what AUTO resolved to)
 let lastBreaker = null;          // Last circuit-breaker evaluation (for /api/cycle status display)
+
+// ── Dashboard ticker strip (Fortune 500 / mega-cap marquee next to ⬛ LIVE) ────
+// A curated slice of the largest Fortune 500 members by market cap. Quotes come from the free
+// Yahoo chart endpoint and are cached server-side so the client can poll cheaply.
+const TICKER_SYMBOLS = [
+  'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','BRK-B','LLY','AVGO',
+  'JPM','V','XOM','UNH','MA','JNJ','PG','HD','COST','ORCL',
+  'WMT','BAC','KO','CVX','MRK','PEP','ADBE','CSCO','NFLX','AMD',
+];
+let _tickerCache = { t: 0, v: [] };
+const TICKER_TTL_MS = 60_000;
+
+// Light cache over the calibration readout (polled every few seconds by /api/cycle).
+let _calibCache = { t: 0, v: null };
+const CALIB_TTL_MS = 30_000;
+function cachedCalibration() {
+  const now = Date.now();
+  if (now - _calibCache.t < CALIB_TTL_MS) return _calibCache.v;
+  let v = null;
+  try {
+    const c = buildCalibration();
+    v = c.ok ? { ok: true, brier: Math.round(c.brier * 100) / 100, n: c.n } : { ok: false };
+  } catch { v = null; }
+  _calibCache = { t: now, v };
+  return v;
+}
 
 // ── Decision-cycle status (drives the RedLine "DECISION CYCLE" panel) ──────────
 // stage: SIGNALS → DECIDING → (NO_ACTION | QUIET | AWAITING | EXECUTED | AUTO_EXECUTED | DENIED | EXPIRED)
@@ -533,6 +561,21 @@ app.get('/api/redline', async (req, res) => {
     res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 });
+// Fortune 500 / mega-cap ticker strip for the dashboard marquee (server-side cached, ~60s).
+app.get('/api/ticker', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - _tickerCache.t < TICKER_TTL_MS && _tickerCache.v.length) {
+      return res.json({ quotes: _tickerCache.v, cached: true });
+    }
+    const quotes = await fetchTickerQuotes(TICKER_SYMBOLS);
+    if (quotes.length) _tickerCache = { t: now, v: quotes };
+    res.json({ quotes: _tickerCache.v, cached: false });
+  } catch (e) {
+    res.json({ quotes: _tickerCache.v || [], error: e.message });
+  }
+});
+
 // RedLine page settings — Auto Trade toggle + allowed investment horizons.
 app.get('/api/settings', (req, res) => {
   try { res.json(getSettings()); }
@@ -564,6 +607,7 @@ app.get('/api/cycle', (req, res) => {
       breakerReason:  lastBreaker?.tripped ? lastBreaker.reasons.join('; ') : null,
       refreshMinutes: config.refreshIntervalMinutes,
       marketOpen:     isMarketWindow(),
+      calibration:    cachedCalibration(),   // {ok, brier, n} — confidence-calibration readout
       serverTime:     Date.now(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1175,7 +1219,7 @@ async function acceptProposal(id, ctx) {
   try {
     const liveVix = currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
       ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price ?? 'N/A';
-    logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null });
+    logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null, confidence: Number.isFinite(Number(p.confidence)) ? Math.round(Number(p.confidence)) : null });
   } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
 
   // Per-trade report for the dashboard report viewer (restored for the single-agent model).

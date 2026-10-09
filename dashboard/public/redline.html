@@ -354,6 +354,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   </div>
 </div>
 
+<div class="alert-bar">
+  <div class="alert-label">⬛ LIVE</div>
+  <div class="alert-scroll"><div class="alert-track" id="tickerTrack">
+    <div class="al-item"><span class="al-sym">—</span><span class="al-val flat">loading market data…</span></div>
+  </div></div>
+</div>
+
 <div class="error-banner" id="errorBanner"></div>
 
 <div id="app">
@@ -1245,10 +1252,13 @@ async function loadCycle(){
     document.getElementById('cycSub4').textContent=tick;
     document.getElementById('cycBadge').textContent=CYC_LBL[c.stage]||c.stage;
     document.getElementById('cycStatus').textContent=c.detail||CYC_LBL[c.stage]||'—';
+    const calTxt=(c.calibration&&c.calibration.ok)
+      ?' · <b title="Confidence calibration — Brier score of the agent\'s stated confidence vs realized wins. 0=perfect, 0.25=coin-flip. Over '+c.calibration.n+' resolved calls.">Cal Brier '+Number(c.calibration.brier).toFixed(2)+'</b>'
+      :'';
     document.getElementById('cycMeta').innerHTML=
       'Last sweep <b>'+cycAgo(c.lastSweepAt)+'</b> · Next <b>'+cycIn(c.nextSweepAt)+'</b>'+
       ' · Buys today <b>'+c.proposalsToday+'/'+(c.dailyCap||'∞')+'</b>'+
-      ' · Mode '+(c.autoTrade?'<b style="color:#ff2244">⚡ AUTO</b>':'<b>✋ MANUAL</b>');
+      ' · Mode '+(c.autoTrade?'<b style="color:#ff2244">⚡ AUTO</b>':'<b>✋ MANUAL</b>')+calTxt;
   }catch(e){}
 }
 
@@ -1276,11 +1286,35 @@ async function loadStances(){
   }catch(e){}
 }
 
+// ── LIVE ticker strip — Fortune 500 / mega-cap marquee (server-cached /api/ticker)
+function buildTicker(quotes){
+  const track=document.getElementById('tickerTrack');if(!track)return;
+  if(!Array.isArray(quotes)||!quotes.length){
+    track.innerHTML='<div class="al-item"><span class="al-sym">—</span><span class="al-val flat">awaiting market data</span></div>';
+    track.style.animation='none';return;
+  }
+  const item=q=>{
+    const p=Number(q.changePct)||0,up=p>0.01,dn=p<-0.01;
+    const cls=up?'up':dn?'dn':'flat',arrow=up?'▲':dn?'▼':'·';
+    const pctTxt=(p>0?'+':'')+p.toFixed(2)+'%';
+    return '<div class="al-item"><span class="al-sym">'+esc(q.symbol)+'</span>'+
+      '<span class="al-val '+cls+'">'+fmt(q.price,2)+' '+arrow+pctTxt+'</span></div>';
+  };
+  const row=quotes.map(item).join('');
+  track.style.animation='';                 // re-enable marquee (cleared on empty state)
+  track.innerHTML=row+row;                  // duplicate so the -50% keyframe loops seamlessly
+}
+async function loadTicker(){
+  try{const r=await fetch('/api/ticker');if(!r.ok)return;const d=await r.json();buildTicker(d.quotes);}catch(e){}
+}
+
 loadAll();
 loadReports();
 loadSettings();
 loadCycle();
 loadStances();
+loadTicker();
+setInterval(loadTicker,60*1000);  // ticker quotes are server-cached ~60s — poll gently
 setInterval(loadCycle,3000);
 setInterval(loadStances,20*1000); // stances change at most once per sweep — poll gently
 setInterval(()=>loadAll(),5*60*1000);

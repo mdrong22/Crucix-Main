@@ -129,6 +129,23 @@ function pickGroup(quotes, symbols) {
   return symbols.map(s => quotes[s]).filter(Boolean);
 }
 
+/**
+ * Lightweight batch quotes for the dashboard ticker strip.
+ * Returns a flat array of { symbol, price, changePct } for the symbols that resolved,
+ * silently dropping any that errored. Used by /api/ticker (server-side cached).
+ */
+export async function fetchTickerQuotes(symbols = []) {
+  const results = await Promise.allSettled(symbols.map(s => fetchQuote(s)));
+  const out = [];
+  for (const r of results) {
+    const q = r.status === 'fulfilled' ? r.value : null;
+    if (q && !q.error && Number.isFinite(q.price)) {
+      out.push({ symbol: q.symbol, price: q.price, changePct: Number.isFinite(q.changePct) ? q.changePct : 0 });
+    }
+  }
+  return out;
+}
+
 export async function GetLiveQuote(ticker) {
   const data = await fetchQuote(ticker, '1m');
   
