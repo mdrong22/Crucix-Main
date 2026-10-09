@@ -35,6 +35,7 @@ import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal } from './lib/llm/planProposal.mjs';
 import { generatePlanReport } from './lib/reports/planReport.mjs';
 import { getDirectives, addDirective, formatDirectivesForLLM } from './lib/directives/store.mjs';
+import { evaluateBreaker, getBreakerState } from './lib/risk/circuitBreaker.mjs';
 import { buildTrackRecord } from './lib/llm/trackRecord.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -59,6 +60,7 @@ let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesi
 let cachedTheses = [];      // Last derived theses (reused when throttled / across restarts)
 let lastGoodIdeas = [];     // Last non-empty LLM idea set — reused when generation is throttled/fails
 let lastStrategyResolved = null; // Concrete strategy the agent last ran under (what AUTO resolved to)
+let lastBreaker = null;          // Last circuit-breaker evaluation (for /api/cycle status display)
 
 // ── Decision-cycle status (drives the RedLine "DECISION CYCLE" panel) ──────────
 // stage: SIGNALS → DECIDING → (NO_ACTION | QUIET | AWAITING | EXECUTED | AUTO_EXECUTED | DENIED | EXPIRED)
@@ -558,6 +560,8 @@ app.get('/api/cycle', (req, res) => {
       investmentTypes: s.investmentTypes,
       strategyMode:   s.strategyMode,
       strategyEffective: lastStrategyResolved,   // what AUTO last resolved to (null until first run)
+      breakerTripped: !!lastBreaker?.tripped,
+      breakerReason:  lastBreaker?.tripped ? lastBreaker.reasons.join('; ') : null,
       refreshMinutes: config.refreshIntervalMinutes,
       marketOpen:     isMarketWindow(),
       serverTime:     Date.now(),
@@ -950,12 +954,13 @@ async function runProposalCycle(context) {
   if (!agentProvider?.isConfigured) return;
 
   // 2. Gather account state (same primitives the council used).
-  const [buyingPower, openAccountOrders, orderCompliance, orders24h, portfolio] = await Promise.all([
+  const [buyingPower, openAccountOrders, orderCompliance, orders24h, portfolio, accountValue] = await Promise.all([
     snapTrade.FetchAccountBuyingPower(),
     snapTrade.FetchOpenAccountOrders(),
     snapTrade.FetchOrderCompliance(),
     snapTrade.FetchAccountOrders24h(true),
     snapTrade.FetchUserTrades(),
+    snapTrade.FetchAccountTotalValue().catch(() => null),
   ]);
   const remaining = calculateRemainingDayTrades(orderCompliance);
   console.log(`[PROPOSAL] 📊 DAY TRADES REMAINING: ${remaining}/3 | Open logged positions: ${getOpenDecisions().length}`);
@@ -981,6 +986,24 @@ async function runProposalCycle(context) {
     console.log(`[PROPOSAL] Buying power $${bpNum} below your $${minBP} floor — agent restricted to MAINTENANCE only.`);
   }
 
+  // Account-level CIRCUIT BREAKER (deterministic, LLM can't override): if the day's loss or the
+  // drawdown-from-peak exceeds the user's limit, halt NEW_BUYS (maintenance/exits still run).
+  const acctVal = Number(String(accountValue ?? '').replace(/[^0-9.\-]/g, ''));
+  const breaker = evaluateBreaker(acctVal, settings);
+  if (breaker.tripped) {
+    console.warn(`[PROPOSAL] 🛑 CIRCUIT BREAKER TRIPPED — ${breaker.reasons.join('; ')}. New buys halted.`);
+    lastBreaker = breaker;
+    if (breaker.justTripped) {
+      try {
+        await telegramAlerter.sendMessage(
+          `🛑 *CIRCUIT BREAKER TRIPPED*\n${breaker.reasons.join('\n')}\nAccount: $${acctVal.toFixed(2)} (day start $${Number(breaker.dayStartValue).toFixed(2)}, peak $${Number(breaker.peakValue).toFixed(2)})\n\nNew buys are paused. Maintenance/exits and hard stop-losses still active.`
+        );
+      } catch (_) {}
+    }
+  } else {
+    lastBreaker = breaker;
+  }
+
   // 3. Single agent → at most one proposal, constrained to the allowed horizons + daily budget.
   // Fallback = the same Gemini provider the ideas pass uses (proven working) so a transient
   // Claude Code failure (e.g. a usage-limit window) still yields a proposal.
@@ -1004,7 +1027,7 @@ async function runProposalCycle(context) {
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
     buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: effectiveStrategy, strategyAuto },
+    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: effectiveStrategy, strategyAuto, breakerTripped: breaker.tripped, breakerReason: breaker.reasons.join('; ') },
     formatStancesForLLM(), buildTrackRecord(), formatDirectivesForLLM()
   );
 
@@ -1041,6 +1064,13 @@ async function runProposalCycle(context) {
   if (proposal.action === 'NEW_BUY' && bpBelowFloor) {
     console.log(`[PROPOSAL] Dropped — ${proposal.ticker}: buying power $${bpNum} below minimum $${minBP}.`);
     setCycle('NO_ACTION', `Buying power $${bpNum} below your $${minBP} floor — new buys paused`);
+    return;
+  }
+
+  // 4a4. Circuit breaker (backstop) — new buys halted while a loss limit is breached.
+  if (proposal.action === 'NEW_BUY' && breaker.tripped) {
+    console.warn(`[PROPOSAL] Dropped — ${proposal.ticker}: circuit breaker (${breaker.reasons.join('; ')}).`);
+    setCycle('NO_ACTION', `🛑 Circuit breaker — ${breaker.reasons.join('; ')} — new buys halted`);
     return;
   }
 

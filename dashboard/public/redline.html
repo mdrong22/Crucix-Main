@@ -639,6 +639,25 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
         </div>
       </div>
 
+      <div class="set-section">CIRCUIT BREAKER</div>
+      <div class="set-sub" style="margin-top:-8px">Deterministic loss limits the agent can't override. When breached, new buys halt (maintenance/exits + hard stops stay active) and you're alerted. 0 = off.</div>
+      <div class="set-row">
+        <div><div class="set-lbl">MAX DAILY LOSS</div><div class="set-sub">Halt new buys if the account is down this % on the day.</div></div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input class="set-bp-input" id="maxDailyInput" type="number" min="0" max="100" step="1" value="0" style="width:70px"
+                 onchange="saveBreaker('maxDailyLossPct',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <span style="opacity:.6">%</span>
+        </div>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">MAX DRAWDOWN</div><div class="set-sub">Halt new buys if the account is down this % from its peak.</div></div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input class="set-bp-input" id="maxDdInput" type="number" min="0" max="100" step="1" value="0" style="width:70px"
+                 onchange="saveBreaker('maxDrawdownPct',this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+          <span style="opacity:.6">%</span>
+        </div>
+      </div>
+
       <div class="set-section">UI</div>
       <div class="set-row">
         <div><div class="set-lbl">HIDE LIVING PLAN</div><div class="set-sub">Hide Claude's Stance Book panel from the dashboard</div></div>
@@ -1135,7 +1154,7 @@ async function loadAll(manual=false){
 }
 
 // ── AGENT SETTINGS (Auto Trade + Investment Type + Hide Living Plan + Min Buying Power)
-let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,hideDecisionCycle:false,minBuyingPower:0,strategyMode:'BALANCED'};
+let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,hideDecisionCycle:false,minBuyingPower:0,strategyMode:'BALANCED',maxDailyLossPct:0,maxDrawdownPct:0};
 const STRAT_DESC={
   AUTO:'System picks the mode each sweep from volatility, market regime, and dislocation.',
   CONSERVATIVE:'Capital preservation first. Only A+ setups (conf ≥80, R/R ≥2:1); heavy bias to NO_ACTION.',
@@ -1165,6 +1184,10 @@ function renderSettings(){
   if(hd){hd.textContent=_settings.hideDecisionCycle?'ON':'OFF';hd.classList.toggle('active',!!_settings.hideDecisionCycle);}
   const bp=document.getElementById('minBpInput');
   if(bp&&document.activeElement!==bp)bp.value=_settings.minBuyingPower||0;
+  const md=document.getElementById('maxDailyInput');
+  if(md&&document.activeElement!==md)md.value=_settings.maxDailyLossPct||0;
+  const dd=document.getElementById('maxDdInput');
+  if(dd&&document.activeElement!==dd)dd.value=_settings.maxDrawdownPct||0;
   // Apply the UI hide settings live.
   const sp=document.querySelector('.stance-panel');
   if(sp)sp.style.display=_settings.hideStancePlan?'none':'';
@@ -1200,6 +1223,7 @@ async function submitPropose(){
   finally{btn.disabled=false;btn.textContent='SUBMIT TO CLAUDE';}
 }
 function saveMinBp(v){const n=Math.max(0,Math.round(Number(v)||0));saveSettings({minBuyingPower:n});}
+function saveBreaker(key,v){const n=Math.max(0,Math.min(100,Number(v)||0));saveSettings({[key]:n});}
 function selectStrategy(m){saveSettings({strategyMode:m});}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();closePropose();}});
 async function loadSettings(){
@@ -1232,7 +1256,10 @@ async function loadCycle(){
       window._marketOpen=c.marketOpen;
       // Keep the header status in sync without clobbering a live connection error.
       const dot=document.getElementById('statusDot');
-      if(dot&&!dot.classList.contains('error'))setStatus('live',marketStatusText());
+      if(dot&&!dot.classList.contains('error')){
+        if(c.breakerTripped)setStatus('error','🛑 TRADING HALTED — '+(c.breakerReason||'circuit breaker'));
+        else setStatus('live',marketStatusText());
+      }
     }
     // Reflect what AUTO strategy last resolved to (if the settings modal is showing it).
     if(c.strategyEffective!==undefined&&c.strategyEffective!==_strategyEffective){
