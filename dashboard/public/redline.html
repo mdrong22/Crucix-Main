@@ -354,13 +354,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
   </div>
 </div>
 
-<div class="alert-bar">
-  <div class="alert-label">⬛ LIVE</div>
-  <div class="alert-scroll"><div class="alert-track" id="alertTrack">
-    <span class="al-item"><span class="al-sym">LOADING</span><span class="al-val flat">market data...</span></span>
-  </div></div>
-</div>
-
 <div class="error-banner" id="errorBanner"></div>
 
 <div id="app">
@@ -493,14 +486,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
 
         <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
         <div class="last-updated" id="lastUpdated"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <div class="panel-title">◈ MARKET OVERVIEW // LIVE QUOTES</div>
-          <div class="panel-badge live">● LIVE</div>
-        </div>
-        <div class="mkt-grid" id="mktGrid"></div>
       </div>
 
       <div class="panel">
@@ -684,10 +669,8 @@ const fmtPrice=v=>{if(v==null)return'—';const n=Number(v);return n>=1000?'$'+f
 const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n;};
 
 // ── SKELETONS
-const SKEL_MKT=Array(8).fill(0).map(()=>`<div class="mkt-card"><span class="skel" style="width:60px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:90px;height:8px;display:block;margin-bottom:8px"></span><span class="skel" style="width:70px;height:15px;display:block"></span></div>`).join('');
 const SKEL_POS=Array(6).fill(0).map(()=>`<div class="pos-card"><span class="skel" style="width:60px;height:14px;margin-bottom:6px"></span><span class="skel" style="width:100px;height:8px;display:block;margin-bottom:10px"></span><span class="skel" style="width:80px;height:17px;display:block"></span></div>`).join('');
 const SKEL_TX=Array(4).fill(0).map(()=>`<div class="tx-row other"><div class="tx-icon other">···</div><div class="tx-body"><span class="skel" style="width:120px;height:11px;margin-bottom:4px"></span><span class="skel" style="width:80px;height:8px;display:block"></span></div></div>`).join('');
-document.getElementById('mktGrid').innerHTML=SKEL_MKT;
 document.getElementById('posGrid').innerHTML=SKEL_POS;
 document.getElementById('txScroll').innerHTML=SKEL_TX;
 
@@ -969,31 +952,6 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── TICKER
-function buildTicker(quotes){
-  const track=document.getElementById('alertTrack');
-  if(!quotes||!Object.keys(quotes).length)return;
-  const items=Object.values(quotes).filter(q=>q&&!q.error&&q.price);
-  if(!items.length)return;
-  track.innerHTML=[...items,...items].map(q=>{
-    const up=q.changePct>=0,cls=Math.abs(q.changePct)<0.01?'flat':up?'up':'dn';
-    return `<span class="al-item"><span class="al-sym">${q.symbol}</span><span class="al-val ${cls}">${up?'+':''}${fmt(q.changePct,2)}%</span></span>`;
-  }).join('');
-}
-
-// ── MARKET
-function buildMarket(quotes){
-  const grid=document.getElementById('mktGrid');
-  if(!quotes){grid.innerHTML='<div class="empty-state">NO MARKET DATA</div>';return;}
-  const items=Object.values(quotes).filter(q=>q&&!q.error&&q.price);
-  if(!items.length){grid.innerHTML='<div class="empty-state">NO QUOTES AVAILABLE</div>';return;}
-  grid.innerHTML=items.map(q=>{
-    const up=q.changePct>=0,cls=Math.abs(q.changePct)<0.01?'flat':up?'up':'dn';
-    return `<div class="mkt-card"><div class="mkt-sym">${q.symbol}</div><div class="mkt-name">${q.name||''}</div>
-      <div class="mkt-price">${fmtPrice(q.price)}</div>
-      <div class="mkt-chg ${cls}">${up?'▲ +':'▼ '}${fmt(Math.abs(q.changePct),2)}%</div></div>`;
-  }).join('');
-}
-
 // ── PORTFOLIO HEADER
 function buildPortfolioHeader(positions,totalValue){
   const totalPnl=positions.reduce((s,p)=>s+(num(p.value)-num(p.avg_cost)*num(p.units)),0);
@@ -1139,7 +1097,7 @@ async function loadAll(manual=false){
     }
     const quotes=d.yfinance?.quotes??null,bp=d.buyingPower??0,totalValue=d.accountTotalValue??null;
     const bpEl=document.getElementById('buyingPwr');if(bpEl)bpEl.textContent=bp!=null?'$'+fmt(bp,2):'—';
-    buildTicker(quotes);buildMarket(quotes);buildPortfolioHeader(positions,totalValue);
+    buildPortfolioHeader(positions,totalValue);
     buildPositions(positions,quotes);buildOrders(ordersData);drawChart(positions);
     window._lastPositions=positions;
     const lu=document.getElementById('lastUpdated');
