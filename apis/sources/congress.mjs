@@ -1,36 +1,36 @@
 // congress.mjs — Congressional Trading Intelligence + FMP Macro Data
-// Provider: Financial Modeling Prep (FMP) — https://financialmodelingprep.com
-// Free tier: 250 calls/day. Get a key at https://financialmodelingprep.com/developer/docs
-// Env var required: FMP_API_KEY
+//
+// TRADES provider: Bargo (https://www.bargo.ai/free-apis/congress) — House + Senate STOCK Act
+//   disclosures normalized into one feed. Free, keyless (30 req / 100 rows per day per IP); a free
+//   BARGO_API_KEY raises it to 100 req / 1000 rows/day. Covers the last ~3 months (our lookback is 45d).
+//   We migrated off FMP's senate/house endpoints because the shared FMP key 429s ("Limit Reach") in
+//   normal use, which the old code silently swallowed as "no data".
+//   Attribution: Bargo requires a visible "Data: Bargo (bargo.ai)" credit wherever this is shown.
+//
+// MACRO provider: Financial Modeling Prep (FMP) — still used ONLY for the economic calendar and
+//   analyst upgrades/downgrades. Requires FMP_API_KEY; if absent or rate-limited, those two degrade
+//   to empty and the congressional trades (Bargo) are unaffected.
 //
 // RATE LIMIT STRATEGY:
-//   250 calls/day limit. Sweep runs every 10 min = 144 sweeps/day.
-//   Daily cache (24h default): 1 refresh/day × ~5 calls = ~5 calls/day total:
-//     2 calls  — Senate (stable + optional legacy fallback)
-//     2 calls  — House  (stable + optional legacy fallback)
-//     1 call   — Economic Calendar (FOMC/CPI/NFP/GDP upcoming)
-//     1 call   — Upgrades/Downgrades (analyst calls last 3d)
-//   Congressional disclosures are filed days/weeks after trades — 24h cache is safe.
-//   Econ calendar changes ~weekly — 24h cache is fine.
+//   24h cache (default) → ~1 refresh/day: 1 Bargo call + (if FMP key) 1 econ-calendar + 1 upgrades call.
+//   Congressional disclosures are filed days/weeks after trades, so a 24h cache is safe.
 //   Set env var CONGRESS_CACHE_HOURS to override (e.g. CONGRESS_CACHE_HOURS=12).
 //
-// Endpoints used (stable v2 API):
-//   Senate:               https://financialmodelingprep.com/stable/senate-latest?apikey=KEY
-//   House:                https://financialmodelingprep.com/stable/house-latest?apikey=KEY
+// Bargo endpoints (base https://www.bargo.ai/free-apis/congress/v1):
+//   Global trades feed:  /trades?from=DATE&to=DATE&limit=250   (both chambers, newest first)
+//   Key (optional):      Authorization: Bearer <BARGO_API_KEY>
+//   Trade fields: member, member_slug, chamber, state, ticker, asset, type ("purchase"|"sale"),
+//                 amount_low, amount_high, amount_range, transaction_date, disclosure_date,
+//                 est_price, recent_price, perf_pct, outcome, filing_portal
+//
+// FMP endpoints (macro only):
 //   Economic Calendar:    https://financialmodelingprep.com/stable/economic?from=DATE&to=DATE&apikey=KEY
 //   Upgrades/Downgrades:  https://financialmodelingprep.com/api/v4/upgrades-downgrades?page=0&apikey=KEY
-//
-// Fallback to legacy v4 if stable returns nothing:
-//   Senate: https://financialmodelingprep.com/api/v4/senate-trading?page=0&apikey=KEY
-//   House:  https://financialmodelingprep.com/api/v4/house-trading?page=0&apikey=KEY
-//
-// Response fields (both chambers, flat per-trade objects):
-//   senator / representative, ticker, assetDescription, type,
-//   amount, transactionDate, disclosureDate, owner, district, state
 
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE          = 'https://financialmodelingprep.com';
+const BARGO_BASE    = 'https://www.bargo.ai/free-apis/congress/v1';
 const LOOKBACK_DAYS = 45;
 
 // ─── Known Insider Traders ────────────────────────────────────────────────────
@@ -134,10 +134,6 @@ function endpoints(key) {
   const fromDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
   const toDate   = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
   return {
-    senateStable:      `${BASE}/stable/senate-latest?apikey=${key}`,
-    houseStable:       `${BASE}/stable/house-latest?apikey=${key}`,
-    senateLegacy:      `${BASE}/api/v4/senate-trading?page=0&apikey=${key}`,
-    houseLegacy:       `${BASE}/api/v4/house-trading?page=0&apikey=${key}`,
     econCalendar:      `${BASE}/stable/economic?from=${fromDate}&to=${toDate}&country=US&apikey=${key}`,
     upgradesDowngrades:`${BASE}/api/v4/upgrades-downgrades?page=0&apikey=${key}`,
   };
@@ -280,42 +276,29 @@ function isRecent(trade, days = LOOKBACK_DAYS) {
   return d && d >= cutoff;
 }
 
-// ─── Normalizers ─────────────────────────────────────────────────────────────
-// FMP returns flat arrays — one object per trade, no nested transactions.
+// ─── Normalizer ──────────────────────────────────────────────────────────────
+// Bargo returns one flat object per trade across both chambers.
 
-function normalizeSenate(raw) {
+function normalizeTrade(raw) {
   const ticker = (raw.ticker || '').trim().toUpperCase();
   if (!isValidTicker(ticker)) return null;
+  // Prefer Bargo's numeric band midpoint; fall back to parsing the "$x - $y" label.
+  const amount = (Number.isFinite(raw.amount_low) && Number.isFinite(raw.amount_high))
+    ? Math.round((raw.amount_low + raw.amount_high) / 2)
+    : parseAmount(raw.amount_range);
   return {
-    chamber:        'Senate',
-    member:         raw.senator || raw.name || 'Unknown',
+    chamber:        (raw.chamber || '').toLowerCase() === 'senate' ? 'Senate' : 'House',
+    member:         raw.member || raw.name || 'Unknown',
     ticker,
-    assetName:      raw.assetDescription || raw.asset || '',
-    type:           (raw.type || '').toLowerCase(),   // 'purchase' | 'sale' | 'sale (full)' | 'sale (partial)'
-    amount:         parseAmount(raw.amount),
-    amountLabel:    raw.amount || '',
-    date:           raw.transactionDate || raw.transaction_date || '',
-    disclosureDate: raw.disclosureDate  || raw.disclosure_date  || '',
-    owner:          raw.owner || 'Self',
-  };
-}
-
-function normalizeHouse(raw) {
-  const ticker = (raw.ticker || '').trim().toUpperCase();
-  if (!isValidTicker(ticker)) return null;
-  return {
-    chamber:        'House',
-    member:         raw.representative || raw.name || 'Unknown',
-    ticker,
-    assetName:      raw.assetDescription || raw.asset || '',
-    type:           (raw.type || '').toLowerCase(),
-    amount:         parseAmount(raw.amount),
-    amountLabel:    raw.amount || '',
-    date:           raw.transactionDate || raw.transaction_date || '',
-    disclosureDate: raw.disclosureDate  || raw.disclosure_date  || '',
-    owner:          raw.owner || 'Self',
-    district:       raw.district || '',
-    state:          raw.state    || '',
+    assetName:      raw.asset || '',
+    type:           (raw.type || '').toLowerCase(),   // 'purchase' | 'sale'
+    amount,
+    amountLabel:    raw.amount_range || '',
+    date:           raw.transaction_date || '',
+    disclosureDate: raw.disclosure_date  || '',
+    owner:          'Self',
+    state:          raw.state || '',
+    district:       '',
   };
 }
 
@@ -337,31 +320,39 @@ function unwrap(val) {
   return null;
 }
 
-// ─── Fetch with stable → legacy fallback ─────────────────────────────────────
+// ─── Bargo trades fetch ───────────────────────────────────────────────────────
+// One call for the global House+Senate feed over the lookback window. A 429 is surfaced as a
+// distinct rateLimited flag (NOT silently treated as "no trades"), so the caller can serve stale
+// data and we can tell "throttled" apart from "genuinely empty".
 
-async function fetchChamber(stableUrl, legacyUrl, normalizer, label) {
-  // Try stable endpoint first (1 API call)
-  _dailyCallCount++;
-  let raw = unwrap(await safeFetch(stableUrl, { timeout: 20000 }));
+async function fetchBargoTrades() {
+  const fromDate = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const toDate   = new Date().toISOString().slice(0, 10);
+  const params   = new URLSearchParams({ from: fromDate, to: toDate, limit: '250' });
+  const url      = `${BARGO_BASE}/trades?${params.toString()}`;
+  const headers  = { 'User-Agent': 'Crucix/2.0 (+https://crucix.io)' };
+  const key      = process.env.BARGO_API_KEY;
+  if (key) headers['Authorization'] = `Bearer ${key}`;
 
-  // If stable returned nothing useful, try legacy (1 more API call)
-  if (!raw || raw.length === 0) {
-    console.warn(`[Congress] ${label} stable endpoint empty — trying legacy`);
-    _dailyCallCount++;
-    raw = unwrap(await safeFetch(legacyUrl, { timeout: 20000 }));
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers });
+    if (res.status === 429) {
+      console.warn('[Congress] Bargo rate-limited (429) — set BARGO_API_KEY to raise daily limits.');
+      return { trades: [], rateLimited: true };
+    }
+    if (!res.ok) {
+      console.warn(`[Congress] Bargo HTTP ${res.status}`);
+      return { trades: [], error: `HTTP ${res.status}` };
+    }
+    const json = await res.json();
+    const raw  = Array.isArray(json?.trades) ? json.trades : [];
+    const trades = raw.map(normalizeTrade).filter(t => t !== null && isRecent(t));
+    console.log(`[Congress] Bargo: ${raw.length} disclosures → ${trades.length} valid in last ${LOOKBACK_DAYS}d${key ? '' : ' (keyless)'}`);
+    return { trades };
+  } catch (err) {
+    console.warn(`[Congress] Bargo fetch failed: ${err.message}`);
+    return { trades: [], error: err.message };
   }
-
-  if (!raw || raw.length === 0) {
-    console.warn(`[Congress] ${label} both endpoints returned no data`);
-    return [];
-  }
-
-  const trades = raw
-    .map(normalizer)
-    .filter(t => t !== null && isRecent(t));
-
-  console.log(`[Congress] ${label}: ${raw.length} total → ${trades.length} valid in last ${LOOKBACK_DAYS}d`);
-  return trades;
 }
 
 // ─── Aggregation ─────────────────────────────────────────────────────────────
@@ -408,18 +399,19 @@ function aggregateByTicker(trades) {
 async function _fetchFresh(key) {
   resetDailyCounterIfNeeded();
 
-  const ep = endpoints(key);
+  // Trades come from Bargo (keyless-capable). Econ calendar + analyst upgrades still come from FMP —
+  // only when an FMP key is present; otherwise they degrade to empty without touching the trades.
+  const ep = key ? endpoints(key) : null;
 
-  const [senateTrades, houseTrades, econCalendar, upgradesDowngrades] = await Promise.all([
-    fetchChamber(ep.senateStable, ep.senateLegacy, normalizeSenate, 'Senate'),
-    fetchChamber(ep.houseStable,  ep.houseLegacy,  normalizeHouse,  'House'),
-    fetchEconCalendar(ep),
-    fetchUpgradesDowngrades(ep),
+  const [bargo, econCalendar, upgradesDowngrades] = await Promise.all([
+    fetchBargoTrades(),
+    ep ? fetchEconCalendar(ep)      : Promise.resolve({ upcoming: [], released: [], all: [] }),
+    ep ? fetchUpgradesDowngrades(ep): Promise.resolve({ all: [], upgrades: [], downgrades: [] }),
   ]);
 
-  const allTrades  = [...senateTrades, ...houseTrades];
-  const senateOk   = senateTrades.length > 0;
-  const houseOk    = houseTrades.length  > 0;
+  const allTrades  = bargo.trades;
+  const senateOk   = allTrades.some(t => t.chamber === 'Senate');
+  const houseOk    = allTrades.some(t => t.chamber === 'House');
 
   // ── Known-insider pass (runs after every FMP fetch, zero extra API calls) ──
   // Filter allTrades for members on the curated watchlist.
@@ -480,15 +472,20 @@ async function _fetchFresh(key) {
   }
 
   if (allTrades.length === 0) {
+    const reason = bargo.rateLimited ? 'Bargo rate-limited (set BARGO_API_KEY)'
+                 : bargo.error       ? `Bargo error: ${bargo.error}`
+                 : 'no valid trades returned';
     return {
       status:  'unavailable',
-      message: 'FMP returned no valid congressional trade data.',
+      rateLimited: !!bargo.rateLimited,
+      message: `Congressional trades unavailable — ${reason}.`,
+      attribution: 'Data: Bargo (bargo.ai)',
       houseOk, senateOk,
       topBuys: [], topSells: [], heavyHitters: [],
       insiderAlerts: [], insiderTrades: [],
       econCalendar,
       upgradesDowngrades,
-      summary: 'Congressional data unavailable this cycle — no valid trades returned.',
+      summary: `Congressional data unavailable this cycle — ${reason}.`,
     };
   }
 
@@ -528,12 +525,13 @@ async function _fetchFresh(key) {
       ({ member, chamber, ticker, amountLabel, amount, date }));
 
   const summary = [
-    `=== CONGRESSIONAL TRADING INTEL (Last ${LOOKBACK_DAYS} days | via FMP) ===`,
+    `=== CONGRESSIONAL TRADING INTEL (Last ${LOOKBACK_DAYS} days | via Bargo) ===`,
     `Sources: ${houseOk ? 'House ✓' : 'House ✗'} | ${senateOk ? 'Senate ✓' : 'Senate ✗'} | ${allTrades.length} valid disclosures`,
   ].join('\n');
 
   return {
     status: 'ok',
+    attribution: 'Data: Bargo (bargo.ai)',
     houseOk, senateOk,
     totalDisclosures: allTrades.length,
     lookbackDays:     LOOKBACK_DAYS,
@@ -549,15 +547,11 @@ async function _fetchFresh(key) {
 }
 
 export async function briefing() {
-  const key = process.env.FMP_API_KEY;
+  // FMP key is now OPTIONAL — Bargo provides the congressional trades keyless. The key only unlocks
+  // the FMP econ calendar + analyst upgrades/downgrades; without it those two are simply empty.
+  const key = process.env.FMP_API_KEY || null;
   if (!key) {
-    console.warn('[Congress] FMP_API_KEY not set — skipping congressional data. Get a free key at financialmodelingprep.com');
-    return {
-      status:  'unconfigured',
-      message: 'FMP_API_KEY not set.',
-      topBuys: [], topSells: [], heavyHitters: [],
-      summary: 'Congressional data unavailable — FMP_API_KEY not configured.',
-    };
+    console.warn('[Congress] FMP_API_KEY not set — econ calendar + upgrades disabled; Bargo trades still active.');
   }
 
   // ── Cache check ────────────────────────────────────────────────────────────
@@ -572,10 +566,18 @@ export async function briefing() {
   const result = await _fetchFresh(key);
   console.log(`[Congress] Fetch complete. FMP calls today: ~${_dailyCallCount} (limit: 250)`);
 
-  // Cache everything except error states so a transient failure doesn't
-  // wipe out valid data we already have.
+  // Cache only good results so a transient failure doesn't wipe out valid data we already have.
   if (result.status === 'ok') {
     _cache = { result, fetchedAt: Date.now() };
+    return result;
+  }
+
+  // Stale-while-error: if this fetch failed (rate-limit / network) but we have prior good data,
+  // serve it rather than handing the agent nothing. Better a day-old congress read than a blind spot.
+  if (_cache?.result) {
+    const age = Date.now() - _cache.fetchedAt;
+    console.warn(`[Congress] Fresh fetch ${result.status} (${result.message || ''}) — serving stale cache (age ${ageLabel(age)}).`);
+    return { ..._cache.result, stale: true, staleReason: result.message || result.status, cacheAgeMs: age };
   }
 
   return result;
