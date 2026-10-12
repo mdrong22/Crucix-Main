@@ -1277,7 +1277,7 @@ async function handlePlanProposal(query) {
   if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
 
   const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
-  const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback);
+  const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback, currentContext || '');
   if (!result) return { ok: false, error: 'Could not evaluate the proposal (LLM unavailable).' };
 
   let applied = 0, directiveAdded = false;
@@ -1313,11 +1313,15 @@ async function handleAskPlan(query) {
   if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
 
   const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
-  // Ground the answer in the real plan: stance book + track record + standing directives.
+  // Ground the answer in the real plan AND the live sweep: stance book + track record + directives,
+  // plus the current market-intelligence digest (news, catalysts, cross-correlation/priority signals,
+  // congress + insider activity) so "why is X moving right now" questions reflect today's data, not
+  // just the stored thesis. currentContext is the same digest the agent sees each sweep.
   const extra = [
     `TRACK RECORD: ${buildTrackRecord()}`,
     `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
-  ].join('\n');
+    currentContext ? `\n=== LIVE MARKET SWEEP (current intelligence) ===\n${String(currentContext).slice(0, 6000)}` : '',
+  ].filter(Boolean).join('\n');
   const result = await answerPlanQuestion(agentProvider, q, formatStancesForLLM(), extra, fallback);
   if (!result) return { ok: false, error: 'Could not answer (LLM unavailable).' };
 
