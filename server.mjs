@@ -32,7 +32,7 @@ import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
-import { evaluatePlanProposal } from './lib/llm/planProposal.mjs';
+import { evaluatePlanProposal, answerPlanQuestion } from './lib/llm/planProposal.mjs';
 import { generatePlanReport } from './lib/reports/planReport.mjs';
 import { getDirectives, addDirective, formatDirectivesForLLM } from './lib/directives/store.mjs';
 import { evaluateBreaker, getBreakerState } from './lib/risk/circuitBreaker.mjs';
@@ -371,6 +371,16 @@ if (telegramAlerter.isConfigured) {
     return `${emoji} *${r.verdict}*${r.summary ? ` — ${escapeMd(r.summary)}` : ''}\n${escapeMd(r.reasoning)}${changes}`;
   });
 
+  // /ask <question> — READ-ONLY: ask the agent about its plan/thesis; nothing changes.
+  telegramAlerter.onCommand('/ask', async (args, _msgId, chatId) => {
+    const q = String(args || '').trim();
+    if (!q) return 'Usage: `/ask <question>` — e.g. `/ask why are you holding NVDA?` or `/ask what’s your exit on SLV?`';
+    await telegramAlerter.sendMessage('💬 Thinking…', { chatId });
+    const r = await handleAskPlan(q);
+    if (!r.ok) return `⚠️ ${r.error}`;
+    return `💬 ${escapeMd(r.answer)}`;
+  });
+
   // Inline Accept/Deny buttons on proposal cards route here.
   telegramAlerter.onCallback(async (action, id, ctx) => {
     if (action === 'accept') return await acceptProposal(id, ctx);
@@ -623,6 +633,14 @@ app.get('/api/stances', (req, res) => {
 app.post('/api/propose-plan', express.json(), async (req, res) => {
   try {
     const result = await handlePlanProposal(req.body?.query);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// User asks a read-only question about the plan → agent explains (no state change).
+app.post('/api/ask-plan', express.json(), async (req, res) => {
+  try {
+    const result = await handleAskPlan(req.body?.query);
     res.status(result.ok ? 200 : 400).json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1284,6 +1302,27 @@ async function handlePlanProposal(query) {
 
   console.log(`[PlanProposal] ${result.verdict} — "${q.slice(0, 60)}" → ${applied} stance change(s)${directiveAdded ? ' + directive' : ''}.`);
   return { ok: true, ...result, applied, directiveAdded, reportFile };
+}
+
+// Shared by the dashboard "Ask" modal (/api/ask-plan) and the Telegram /ask command.
+// READ-ONLY: the agent explains its plan grounded in the stance book + track record + directives.
+// It never changes state — questions are for understanding, /propose is for changing.
+async function handleAskPlan(query) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: false, error: 'Empty question.' };
+  if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
+
+  const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
+  // Ground the answer in the real plan: stance book + track record + standing directives.
+  const extra = [
+    `TRACK RECORD: ${buildTrackRecord()}`,
+    `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
+  ].join('\n');
+  const result = await answerPlanQuestion(agentProvider, q, formatStancesForLLM(), extra, fallback);
+  if (!result) return { ok: false, error: 'Could not answer (LLM unavailable).' };
+
+  console.log(`[PlanAsk] "${q.slice(0, 60)}" → ${result.answer.length} chars (${result.provider}).`);
+  return { ok: true, ...result };
 }
 
 // === Startup ===
