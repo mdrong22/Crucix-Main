@@ -620,18 +620,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--r
           <button class="report-filter-btn" data-h="SWING" onclick="toggleHorizon('SWING')">SWING</button>
           <button class="report-filter-btn" data-h="LONG" onclick="toggleHorizon('LONG')">LONG</button>
         </div>
-        <div class="set-sub" style="margin-top:6px">Which horizons the agent may propose for new buys.</div>
+        <div class="set-sub" style="margin-top:6px" id="horizonNote">Which horizons the agent may propose for new buys.</div>
       </div>
       <div>
         <div class="set-lbl" style="margin-bottom:8px">STRATEGY MODE</div>
-        <div class="report-filter-bar" id="strategyBar">
-          <button class="report-filter-btn" data-m="AUTO" onclick="selectStrategy('AUTO')">AUTO</button>
-          <button class="report-filter-btn" data-m="CONSERVATIVE" onclick="selectStrategy('CONSERVATIVE')">CONSERVATIVE</button>
-          <button class="report-filter-btn" data-m="BALANCED" onclick="selectStrategy('BALANCED')">BALANCED</button>
-          <button class="report-filter-btn" data-m="AGGRESSIVE" onclick="selectStrategy('AGGRESSIVE')">AGGRESSIVE</button>
-          <button class="report-filter-btn" data-m="SCALPER" onclick="selectStrategy('SCALPER')">SCALPER</button>
-        </div>
+        <div class="report-filter-bar" id="strategyBar" style="flex-wrap:wrap"></div>
         <div class="set-sub" style="margin-top:6px" id="strategyDesc">How aggressively the agent hunts profit. Risk discipline (hard stops, real edge) always applies.</div>
+        <!-- Custom-mode editor (hidden until "＋ Custom") -->
+        <div id="customModeEditor" style="display:none;margin-top:10px;border:1px solid var(--red-border);background:var(--red-dim);border-radius:8px;padding:10px">
+          <div class="set-lbl" id="cmeTitle" style="margin-bottom:8px">NEW CUSTOM MODE</div>
+          <input id="cmeName" type="text" maxlength="40" placeholder="Mode name (e.g. Earnings Sniper)"
+                 style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--red-border);color:var(--text);padding:7px 9px;font-family:var(--raj);font-size:13px;border-radius:5px;margin-bottom:8px">
+          <textarea id="cmePrompt" maxlength="600" rows="4" placeholder="How should the agent behave in this mode? Plain English — e.g. 'Only trade stocks with earnings in 48h; take profit fast on the IV crush.' (Risk discipline — hard stops, R/R — always applies and can't be overridden.)"
+                 style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--red-border);color:var(--text);padding:7px 9px;font-family:var(--raj);font-size:13px;border-radius:5px;resize:vertical"></textarea>
+          <div class="set-sub" style="margin:8px 0 5px">Force investment horizons for this mode <span style="opacity:.6">(leave all off = use your own Investment Type setting)</span></div>
+          <div class="report-filter-bar" id="cmeHorizons">
+            <button type="button" class="report-filter-btn" data-ch="INTRADAY" onclick="cmeToggleH('INTRADAY')">INTRADAY</button>
+            <button type="button" class="report-filter-btn" data-ch="SWING" onclick="cmeToggleH('SWING')">SWING</button>
+            <button type="button" class="report-filter-btn" data-ch="LONG" onclick="cmeToggleH('LONG')">LONG</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="report-filter-btn" style="background:var(--red);color:#fff;border-color:var(--red)" onclick="saveCustomMode()">SAVE MODE</button>
+            <button class="report-filter-btn" onclick="closeCustomMode()">CANCEL</button>
+          </div>
+        </div>
       </div>
       <div class="set-row">
         <div><div class="set-lbl">MIN BUYING POWER</div><div class="set-sub">Agent won't propose new buys below this. Maintenance/exits still allowed. 0 = no floor.</div></div>
@@ -1130,27 +1142,97 @@ async function loadAll(manual=false){
 }
 
 // ── AGENT SETTINGS (Auto Trade + Investment Type + Hide Living Plan + Min Buying Power)
-let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,hideDecisionCycle:false,minBuyingPower:0,strategyMode:'BALANCED',maxDailyLossPct:0,maxDrawdownPct:0};
-const STRAT_DESC={
-  AUTO:'System picks the mode each sweep from volatility, market regime, and dislocation.',
-  CONSERVATIVE:'Capital preservation first. Only A+ setups (conf ≥80, R/R ≥2:1); heavy bias to NO_ACTION.',
-  BALANCED:'Default. Act on clearly strong setups; quality over quantity.',
-  AGGRESSIVE:'Profit-focused. Lower bar to act (conf ≥60), tighter R/R, chases confirmed momentum.',
-  SCALPER:'Quick flips on liquid movers. Fast profit-taking, tighter targets, more frequent proposals.'
-};
-let _strategyEffective=null; // what AUTO last resolved to (from /api/cycle)
+let _settings={autoTrade:false,investmentTypes:['INTRADAY','SWING','LONG'],hideStancePlan:false,hideDecisionCycle:false,minBuyingPower:0,strategyMode:'BALANCED',customModes:[],maxDailyLossPct:0,maxDrawdownPct:0};
+let _modes={builtin:[]};          // built-in mode defs from /api/modes (id,name,desc,horizons,core,auto)
+let _strategyExpanded=false;      // whether the "+ MORE" extra modes are shown
+let _cmeHorizons=[];              // horizon picks in the custom-mode editor
+let _strategyEffective=null;      // what AUTO last resolved to (from /api/cycle)
+// Find the active mode's definition (built-in or custom) to read its forced horizons.
+function activeModeDef(){
+  const id=_settings.strategyMode;
+  return _modes.builtin.find(m=>m.id===id)||(_settings.customModes||[]).find(m=>m.id===id)||null;
+}
+function modeForcedHorizons(m){return (m&&Array.isArray(m.horizons)&&m.horizons.length)?m.horizons:null;}
+// Render the strategy-mode buttons: core modes always; "+ MORE" reveals extra built-ins + custom + "＋ Custom".
+function renderStrategyBar(){
+  const bar=document.getElementById('strategyBar');if(!bar)return;
+  const cur=_settings.strategyMode;
+  const core=_modes.builtin.filter(m=>m.core);
+  const extra=_modes.builtin.filter(m=>!m.core);
+  const customs=_settings.customModes||[];
+  let html=core.map(m=>modeBtn(m,cur)).join('');
+  if(_strategyExpanded){
+    html+=extra.map(m=>modeBtn(m,cur)).join('');
+    html+=customs.map(m=>modeBtn(m,cur,true)).join('');
+    html+=`<button type="button" class="report-filter-btn" style="border-style:dashed" onclick="openCustomMode()">＋ Custom</button>`;
+  }
+  const nMore=extra.length+customs.length;
+  html+=`<button type="button" class="report-filter-btn" style="opacity:.7" onclick="toggleStrategyMore()">${_strategyExpanded?'− Less':'+ More'+(nMore?` (${nMore})`:'')}</button>`;
+  bar.innerHTML=html;
+}
+function modeBtn(m,cur,isCustom){
+  const act=m.id===cur?' active':'';
+  const forced=modeForcedHorizons(m)?' ◷':'';  // small marker: this mode forces horizons
+  const del=isCustom?`<span onclick="event.stopPropagation();deleteCustomMode('${esc(m.id)}')" style="margin-left:6px;opacity:.6" title="Delete mode">✕</span>`:'';
+  return `<button type="button" class="report-filter-btn${act}" onclick="selectStrategy('${esc(m.id)}')">${esc(m.name)}${forced}${del}</button>`;
+}
+function toggleStrategyMore(){_strategyExpanded=!_strategyExpanded;renderStrategyBar();}
+function openCustomMode(){
+  _cmeHorizons=[];
+  document.getElementById('cmeName').value='';
+  document.getElementById('cmePrompt').value='';
+  document.querySelectorAll('#cmeHorizons .report-filter-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('customModeEditor').style.display='';
+  document.getElementById('cmeName').focus();
+}
+function closeCustomMode(){document.getElementById('customModeEditor').style.display='none';}
+function cmeToggleH(h){
+  const i=_cmeHorizons.indexOf(h);
+  if(i>=0)_cmeHorizons.splice(i,1);else _cmeHorizons.push(h);
+  document.querySelectorAll('#cmeHorizons .report-filter-btn').forEach(b=>b.classList.toggle('active',_cmeHorizons.includes(b.dataset.ch)));
+}
+async function saveCustomMode(){
+  const name=document.getElementById('cmeName').value.trim();
+  const prompt=document.getElementById('cmePrompt').value.trim();
+  if(!name||!prompt){alert('Give the mode a name and a prompt.');return;}
+  // All-3 horizons == no constraint; send only a real subset.
+  const horizons=(_cmeHorizons.length&&_cmeHorizons.length<3)?[..._cmeHorizons]:null;
+  const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'mode';
+  const id='custom:'+slug;
+  const others=(_settings.customModes||[]).filter(m=>m.id!==id);
+  const customModes=[...others,{id,name,prompt,horizons}];
+  await saveSettings({customModes,strategyMode:id});  // create + select in one patch
+  closeCustomMode();_strategyExpanded=true;renderStrategyBar();
+}
+async function deleteCustomMode(id){
+  const customModes=(_settings.customModes||[]).filter(m=>m.id!==id);
+  const patch={customModes};
+  if(_settings.strategyMode===id)patch.strategyMode='BALANCED';  // don't leave a dangling active mode
+  await saveSettings(patch);renderStrategyBar();
+}
 function renderSettings(){
   const btn=document.getElementById('autoTradeBtn');
   if(btn){btn.textContent=_settings.autoTrade?'ON':'OFF';btn.classList.toggle('active',!!_settings.autoTrade);}
+  // Horizon toggles — if the active mode FORCES horizons, lock them to the mode's set and grey the rest.
+  const am=activeModeDef();
+  const forced=modeForcedHorizons(am);
   document.querySelectorAll('#horizonBar .report-filter-btn').forEach(b=>{
-    b.classList.toggle('active',_settings.investmentTypes.includes(b.dataset.h));
+    const on=forced?forced.includes(b.dataset.h):_settings.investmentTypes.includes(b.dataset.h);
+    b.classList.toggle('active',on);
+    b.disabled=!!forced;
+    b.style.opacity=forced&&!on?'.35':'';
+    b.style.cursor=forced?'not-allowed':'';
   });
-  document.querySelectorAll('#strategyBar .report-filter-btn').forEach(b=>{
-    b.classList.toggle('active',_settings.strategyMode===b.dataset.m);
-  });
+  const hz=document.getElementById('horizonNote');
+  if(hz)hz.textContent=forced
+    ? `Locked to ${forced.join(' + ')} by the ${am.name} mode.`
+    : 'Which horizons the agent may propose for new buys.';
+  renderStrategyBar();
   const sd=document.getElementById('strategyDesc');
   if(sd){
-    let txt=STRAT_DESC[_settings.strategyMode]||STRAT_DESC.BALANCED;
+    let txt;
+    if(am){txt=am.desc||(am.prompt?am.prompt.slice(0,160):'Custom mode.');}
+    else txt='How aggressively the agent hunts profit. Risk discipline (hard stops, real edge) always applies.';
     if(_settings.strategyMode==='AUTO'&&_strategyEffective)txt+=` · Currently: ${_strategyEffective}`;
     sd.textContent=txt;
   }
@@ -1232,8 +1314,10 @@ function saveBreaker(key,v){const n=Math.max(0,Math.min(100,Number(v)||0));saveS
 function selectStrategy(m){saveSettings({strategyMode:m});}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();closePropose();}});
 async function loadSettings(){
-  try{const res=await fetch('/api/settings');if(!res.ok)return;_settings=await res.json();renderSettings();}
-  catch(e){console.error('[SETTINGS] load failed',e);}
+  try{
+    if(!_modes.builtin.length){const mr=await fetch('/api/modes');if(mr.ok)_modes=await mr.json();}
+    const res=await fetch('/api/settings');if(!res.ok)return;_settings=await res.json();renderSettings();
+  }catch(e){console.error('[SETTINGS] load failed',e);}
 }
 async function saveSettings(patch){
   try{
@@ -1243,6 +1327,7 @@ async function saveSettings(patch){
 }
 function toggleAutoTrade(){saveSettings({autoTrade:!_settings.autoTrade});}
 function toggleHorizon(h){
+  if(modeForcedHorizons(activeModeDef()))return; // the active mode controls horizons — can't edit here
   const set=new Set(_settings.investmentTypes);
   set.has(h)?set.delete(h):set.add(h);
   if(set.size===0)return; // never allow an empty set (would silence the agent)

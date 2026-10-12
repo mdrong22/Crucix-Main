@@ -21,7 +21,8 @@ import { formatToTelegramMarkdown, escapeMd, TelegramAlerter } from './lib/alert
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { SnapTrade } from './lib/alerts/snaptrade.mjs';
 // Single-agent proposal system (replaces the Scout/Phi/Theta/Gregor council + debate.mjs).
-import { generateProposal, resolveAutoStrategy } from './lib/llm/analyst.mjs';
+import { generateProposal } from './lib/llm/analyst.mjs';
+import { resolveActiveMode, BUILTIN_MODES } from './lib/llm/modes.mjs';
 import { createProposal, getProposal, getPending, setStatus, attachMessageId, expireStale, hasPendingForTicker, countToday } from './lib/proposals/store.mjs';
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
@@ -612,6 +613,7 @@ app.get('/api/cycle', (req, res) => {
       autoTrade:      s.autoTrade,
       investmentTypes: s.investmentTypes,
       strategyMode:   s.strategyMode,
+      customModes:    s.customModes,              // user-created modes (for the strategy menu)
       strategyEffective: lastStrategyResolved,   // what AUTO last resolved to (null until first run)
       breakerTripped: !!lastBreaker?.tripped,
       breakerReason:  lastBreaker?.tripped ? lastBreaker.reasons.join('; ') : null,
@@ -621,6 +623,17 @@ app.get('/api/cycle', (req, res) => {
       serverTime:     Date.now(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Built-in strategy modes (single source of truth in lib/llm/modes.mjs) for the strategy menu.
+// Custom modes come from /api/settings (customModes); the UI renders built-ins + custom together.
+app.get('/api/modes', (req, res) => {
+  res.json({
+    builtin: BUILTIN_MODES.map(m => ({
+      id: m.id, name: m.name, desc: m.desc, core: !!m.core,
+      horizons: m.horizons || null, auto: !!m.auto,
+    })),
+  });
 });
 
 // The agent's living plan per stock — its cross-sweep memory (WATCH/ACCUMULATE/HOLD/…).
@@ -1073,23 +1086,29 @@ async function runProposalCycle(context) {
   const analystFallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
   const heldTickers = (Array.isArray(portfolio) ? portfolio : []).map(p => p?.symbol).filter(Boolean);
 
-  // Strategy mode — AUTO resolves to a concrete mode from live conditions (VIX, regime, dislocation).
-  const strategyAuto = settings.strategyMode === 'AUTO';
-  let effectiveStrategy = settings.strategyMode;
-  if (strategyAuto) {
-    const vix = Number(currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
-      ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price) || null;
-    const direction = currentData?.delta?.summary?.direction || null;
-    const moverCount = (currentData?.movers?.losers?.length || 0) + (currentData?.movers?.gainers?.length || 0);
-    effectiveStrategy = resolveAutoStrategy({ vix, direction, moverCount });
-    console.log(`[PROPOSAL] 🎚 Strategy AUTO → ${effectiveStrategy} (VIX ${vix ?? '?'}, ${direction || 'n/a'}, ${moverCount} movers).`);
+  // Strategy mode — resolve the active mode (built-in, custom, or AUTO). A mode may FORCE its own
+  // investment horizons (e.g. Day Trader drops LONG); otherwise the user's investmentTypes apply.
+  const vix = Number(currentData?.fred?.find(f => f.id === 'VIXCLS')?.value
+    ?? currentData?.yfinance?.quotes?.find?.(q => q.symbol === '^VIX')?.price) || null;
+  const direction = currentData?.delta?.summary?.direction || null;
+  const moverCount = (currentData?.movers?.losers?.length || 0) + (currentData?.movers?.gainers?.length || 0);
+  const activeMode = resolveActiveMode(settings, { vix, direction, moverCount });
+  const effectiveHorizons = (Array.isArray(activeMode.horizons) && activeMode.horizons.length)
+    ? activeMode.horizons
+    : settings.investmentTypes;
+  lastStrategyResolved = activeMode.resolvedId;
+  if (activeMode.auto) {
+    console.log(`[PROPOSAL] 🎚 Strategy AUTO → ${activeMode.resolvedId} (VIX ${vix ?? '?'}, ${direction || 'n/a'}, ${moverCount} movers).`);
+  } else if (activeMode.custom || (Array.isArray(activeMode.horizons) && activeMode.horizons.length)) {
+    console.log(`[PROPOSAL] 🎚 Strategy ${activeMode.label} — horizons [${effectiveHorizons.join(',')}].`);
   }
-  lastStrategyResolved = effectiveStrategy;
 
   const proposal = await generateProposal(
     agentProvider, currentData, portfolio, openAccountOrders,
-    buyingPower, remaining, priorPending, analystFallback, settings.investmentTypes,
-    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor, strategyMode: effectiveStrategy, strategyAuto, breakerTripped: breaker.tripped, breakerReason: breaker.reasons.join('; ') },
+    buyingPower, remaining, priorPending, analystFallback, effectiveHorizons,
+    { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor,
+      strategyPrompt: activeMode.prompt, strategyLabel: activeMode.label, strategyAuto: activeMode.auto,
+      breakerTripped: breaker.tripped, breakerReason: breaker.reasons.join('; ') },
     formatStancesForLLM(), buildTrackRecord(), formatDirectivesForLLM()
   );
 
@@ -1110,8 +1129,8 @@ async function runProposalCycle(context) {
 
   // 4a. Enforce the investment-type filter (a NEW_BUY outside the allowed horizons is dropped;
   //     MAINTENANCE/exits are always allowed — you must be able to manage what you already hold).
-  if (proposal.action === 'NEW_BUY' && proposal.horizon && !settings.investmentTypes.includes(proposal.horizon)) {
-    console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${settings.investmentTypes.join(',')}].`);
+  if (proposal.action === 'NEW_BUY' && proposal.horizon && !effectiveHorizons.includes(proposal.horizon)) {
+    console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${effectiveHorizons.join(',')}] (mode: ${activeMode.label}).`);
     return;
   }
 
