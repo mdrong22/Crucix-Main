@@ -1289,6 +1289,28 @@ async function acceptProposal(id, ctx) {
     logDecisions([trade], p.desc || p.title, liveVix, remaining, { horizon: p.horizon || 'SWING', trigger: p.action, signalScore: null, confidence: Number.isFinite(Number(p.confidence)) ? Math.round(Number(p.confidence)) : null });
   } catch (err) { console.error('[DecisionLogger] Failed to log accepted trade:', err.message); }
 
+  // Sync the living plan to reality the moment a trade fills — don't wait for the agent to notice on a
+  // later sweep. A BUY flips the stance to HOLD with the real entry + enforced stop (so the book can't
+  // say "WATCH, wait for pullback" on a stock you now own). The complete held set is preserved from the
+  // cached portfolio (plus/minus this ticker) so other holdings keep their ★ flags.
+  try {
+    const isBuy = trade.action === 'BUY';
+    const entered = Number(trade.price) > 0 ? Number(trade.price) : (Number(livePrice) > 0 ? Number(livePrice) : null);
+    const stopTxt = Number(trade.stopLossPrice) > 0 ? `hard stop $${Number(trade.stopLossPrice)} (auto-sell)` : `${p.horizon || 'SWING'} hard-stop floor (auto-sell)`;
+    const heldNow = new Set((Array.isArray(lastPortfolio) ? lastPortfolio : []).map(x => x?.symbol).filter(Boolean));
+    if (isBuy) heldNow.add(trade.symbol); else heldNow.delete(trade.symbol);
+    applyStanceUpdates([{
+      ticker:     trade.symbol,
+      stance:     isBuy ? 'HOLD' : 'TRIM',
+      thesis:     (p.desc || p.title || '').slice(0, 240),
+      plan:       isBuy ? `Entered ${trade.units ?? ''} @ ~$${entered ?? '?'} (${p.horizon || 'SWING'}, ${ctx?.auto ? 'auto' : 'accepted'})`.trim() : `Sold ${trade.units ?? ''}`.trim(),
+      exit:       stopTxt,
+      confidence: Number.isFinite(Number(p.confidence)) ? Math.round(Number(p.confidence)) : null,
+      close:      false,
+    }], [...heldNow]);
+    console.log(`[STANCE] Post-trade sync — ${trade.symbol} → ${isBuy ? 'HOLD' : 'TRIM'} (held set: ${heldNow.size}).`);
+  } catch (err) { console.error('[STANCE] post-trade sync failed:', err.message); }
+
   // Per-trade report for the dashboard report viewer (restored for the single-agent model).
   try { generateTradeReport(p, { auto: !!ctx?.auto, orderId }); }
   catch (err) { console.error('[TradeReport] generation failed:', err.message); }
