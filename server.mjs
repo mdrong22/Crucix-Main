@@ -29,7 +29,7 @@ import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
 import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
-import { startStopLossWatcher } from './lib/alerts/stopLossWatcher.mjs';
+import { startStopLossWatcher, derivedStopPrice } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
@@ -1000,13 +1000,25 @@ function formatProposalCard(p) {
   const modelLine = p.model ? `🤖 Model: ${p.provider ? `${p.provider}/` : ''}${p.model}` : '';
   const sourcesLine = Array.isArray(p.sources) && p.sources.length
     ? `📎 Based on: ${p.sources.join(' · ')}` : '';
+  // Show the stop the code will ENFORCE: the agent's explicit price, or the horizon-derived one.
+  let stopLine = '';
+  if (p.side === 'BUY') {
+    const entry = Number(p.price) > 0 ? Number(p.price) : null;
+    const explicit = Number(p.stopLoss) > 0 ? Number(p.stopLoss) : null;
+    const effStop = explicit ?? derivedStopPrice(p.horizon || 'SWING', entry);
+    stopLine = effStop
+      ? `🛑 Hard stop: $${effStop}${explicit ? '' : ` (auto · ${p.horizon || 'SWING'} floor)`} — auto-sells, no approval, if breached`
+      : `🛑 Hard stop: ${p.horizon || 'SWING'} %-floor — auto-sells, no approval, if breached`;
+  } else if (Number(p.stopLoss) > 0) {
+    stopLine = `🛑 Hard stop: $${Number(p.stopLoss)} (auto-sells, no approval, if breached)`;
+  }
   return [
     `${p.action === 'MAINTENANCE' ? '🛠' : '📈'} *${p.title}*`,
     ``,
     p.desc,
     ``,
     `*${p.side} ${p.ticker}* — ${p.order_type} @ ${priceStr}${qty} · ${p.time_in_force}`,
-    p.stopLoss ? `🛑 Hard stop: $${p.stopLoss} (auto-sells, no approval, if breached)` : '',
+    stopLine,
     p.bearCase ? `🐻 Bear case: ${p.bearCase}` : '',
     `🎯 Confidence: ${conf}${p.horizon ? ` · ${p.horizon}` : ''}`,
     sourcesLine,
@@ -1222,8 +1234,24 @@ async function acceptProposal(id, ctx) {
     units:          p.units ?? undefined,
     notional_value: p.notional_value ?? undefined,
     time_in_force:  p.time_in_force || 'Day',
-    stopLossPrice:  p.stopLoss ?? null, // persisted by logDecisions → enforced by the hard stop-loss watcher
+    stopLossPrice:  null, // set just below — a concrete price is ENFORCED in code, never left to the model
   };
+
+  // Enforce a concrete hard-stop PRICE on every long entry in code, so protection never depends on the
+  // model remembering to set one. The agent's explicit stop wins; otherwise derive it from the horizon
+  // %-floor (same source the watcher uses) off the entry/live price. Persisted → the watcher reads it.
+  if (trade.action === 'BUY') {
+    const entryForStop = Number(p.price) > 0 ? Number(p.price)
+                       : (Number(livePrice) > 0 ? Number(livePrice) : null);
+    const explicit = Number(p.stopLoss) > 0 && (!(Number(entryForStop) > 0) || Number(p.stopLoss) < entryForStop)
+      ? Number(p.stopLoss) : null;
+    trade.stopLossPrice = explicit ?? derivedStopPrice(p.horizon || 'SWING', entryForStop);
+    if (!explicit && trade.stopLossPrice) {
+      console.log(`[PROPOSAL] 🛡 Stop auto-derived for ${trade.symbol} (${p.horizon || 'SWING'}): $${trade.stopLossPrice} from entry ~$${entryForStop}.`);
+    }
+  } else {
+    trade.stopLossPrice = Number(p.stopLoss) > 0 ? Number(p.stopLoss) : null;
+  }
 
   // Migrated mechanical guards (from the retired debate.mjs):
   if (trade.units != null && !Number.isInteger(trade.units)) trade.time_in_force = 'Day'; // fractional → Day
@@ -1299,8 +1327,19 @@ async function buildPlanGrounding() {
   try { const live = await snapTrade.FetchUserTrades(); if (Array.isArray(live)) port = live; }
   catch (err) { console.warn('[PlanGrounding] live portfolio fetch failed, using cache:', err.message); }
   const holdings = DataCleaner.stringifyPortfolio(Array.isArray(port) ? port : []);
+  // Active hard stops per position — the concrete price (or horizon floor) the code will auto-sell at,
+  // so "what's my stop on X" is answerable from real state, not the model's memory.
+  let stopsLine = 'none logged';
+  try {
+    const stops = (getOpenDecisions() || []).filter(d => d?.ticker).map(d => {
+      const sp = Number(d.stopLossPrice) > 0 ? `$${Number(d.stopLossPrice)}` : `${d.horizon || 'SWING'} %-floor`;
+      return `${d.ticker}: hard stop ${sp} (${d.horizon || 'SWING'})`;
+    });
+    if (stops.length) stopsLine = stops.join(' | ');
+  } catch { /* non-fatal */ }
   return [
     `CURRENT HOLDINGS (live portfolio — ground truth of what you own): ${holdings}`,
+    `ACTIVE HARD STOPS (auto-sell, no approval): ${stopsLine}`,
     `TRACK RECORD: ${buildTrackRecord()}`,
     `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
     currentContext ? `\n=== LIVE MARKET SWEEP (current intelligence) ===\n${String(currentContext).slice(0, 6000)}` : '',
