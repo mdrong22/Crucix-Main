@@ -1297,18 +1297,27 @@ async function acceptProposal(id, ctx) {
     const isBuy = trade.action === 'BUY';
     const entered = Number(trade.price) > 0 ? Number(trade.price) : (Number(livePrice) > 0 ? Number(livePrice) : null);
     const stopTxt = Number(trade.stopLossPrice) > 0 ? `hard stop $${Number(trade.stopLossPrice)} (auto-sell)` : `${p.horizon || 'SWING'} hard-stop floor (auto-sell)`;
+    // For a SELL, decide trim vs full exit: compare units sold against the position held (from the
+    // cached portfolio). Selling ≥ what's held = a close → drop the stance; a partial = TRIM. If units
+    // are unknown (e.g. a notional sell), stay TRIM — never close on a guess.
+    const heldPos   = (Array.isArray(lastPortfolio) ? lastPortfolio : []).find(x => x?.symbol === trade.symbol);
+    const heldUnits = heldPos ? parseFloat(heldPos.units) || 0 : 0;
+    const soldUnits = parseFloat(trade.units) || 0;
+    const fullExit  = !isBuy && soldUnits > 0 && heldUnits > 0 && soldUnits >= heldUnits - 1e-6;
     const heldNow = new Set((Array.isArray(lastPortfolio) ? lastPortfolio : []).map(x => x?.symbol).filter(Boolean));
-    if (isBuy) heldNow.add(trade.symbol); else heldNow.delete(trade.symbol);
+    if (isBuy) heldNow.add(trade.symbol);
+    else if (fullExit) heldNow.delete(trade.symbol);
     applyStanceUpdates([{
       ticker:     trade.symbol,
-      stance:     isBuy ? 'HOLD' : 'TRIM',
+      stance:     isBuy ? 'HOLD' : (fullExit ? 'EXIT' : 'TRIM'),
       thesis:     (p.desc || p.title || '').slice(0, 240),
       plan:       isBuy ? `Entered ${trade.units ?? ''} @ ~$${entered ?? '?'} (${p.horizon || 'SWING'}, ${ctx?.auto ? 'auto' : 'accepted'})`.trim() : `Sold ${trade.units ?? ''}`.trim(),
       exit:       stopTxt,
       confidence: Number.isFinite(Number(p.confidence)) ? Math.round(Number(p.confidence)) : null,
-      close:      false,
+      close:      fullExit,   // full exit → delete the stance entirely
     }], [...heldNow]);
-    console.log(`[STANCE] Post-trade sync — ${trade.symbol} → ${isBuy ? 'HOLD' : 'TRIM'} (held set: ${heldNow.size}).`);
+    const outcome = isBuy ? 'HOLD' : (fullExit ? 'CLOSED (full exit)' : 'TRIM');
+    console.log(`[STANCE] Post-trade sync — ${trade.symbol} → ${outcome} (held set: ${heldNow.size}).`);
   } catch (err) { console.error('[STANCE] post-trade sync failed:', err.message); }
 
   // Per-trade report for the dashboard report viewer (restored for the single-agent model).
