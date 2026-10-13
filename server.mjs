@@ -57,6 +57,7 @@ let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 let currentContext = null;
+let lastPortfolio = null;  // Live holdings from the last sweep — ground truth for Ask/Propose "what do I hold"
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
@@ -769,6 +770,7 @@ async function runSweepCycle() {
     // 3. Synthesize into dashboard format
     console.log('[Crucix] Synthesizing dashboard data...');
     const [synthesized, userPortfolio, accountOrders ]= await Promise.all([synthesize(rawData), snapTrade.FetchUserTrades(), snapTrade.getBuyDates()]);
+    lastPortfolio = Array.isArray(userPortfolio) ? userPortfolio : lastPortfolio;  // cache for Ask/Propose grounding
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
@@ -1286,6 +1288,25 @@ async function denyProposal(id, ctx) {
   return 'Denied';
 }
 
+// Shared live grounding for Ask + Propose so both reflect reality, not just the stance book:
+//  • CURRENT HOLDINGS — ground truth of what's actually owned (shares, cost, P/L). Fixes the agent
+//    not knowing its own positions: the stance book is a plan/watchlist and can omit held stocks.
+//  • TRACK RECORD + DIRECTIVES — how it has actually performed + the user's standing instructions.
+//  • LIVE MARKET SWEEP — today's news/catalysts/insider signals (same digest the sweep agent sees).
+async function buildPlanGrounding() {
+  // Prefer a fresh portfolio; fall back to the last sweep's cache if the live fetch fails.
+  let port = lastPortfolio;
+  try { const live = await snapTrade.FetchUserTrades(); if (Array.isArray(live)) port = live; }
+  catch (err) { console.warn('[PlanGrounding] live portfolio fetch failed, using cache:', err.message); }
+  const holdings = DataCleaner.stringifyPortfolio(Array.isArray(port) ? port : []);
+  return [
+    `CURRENT HOLDINGS (live portfolio — ground truth of what you own): ${holdings}`,
+    `TRACK RECORD: ${buildTrackRecord()}`,
+    `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
+    currentContext ? `\n=== LIVE MARKET SWEEP (current intelligence) ===\n${String(currentContext).slice(0, 6000)}` : '',
+  ].filter(Boolean).join('\n');
+}
+
 // ── User plan proposal — evaluate a user's proposed edit to the living plan. ────
 // Shared by the dashboard modal (/api/propose-plan) and the Telegram /propose command.
 // On ACCEPT/PARTIAL, the stance updates are applied to the book (held flags preserved) and
@@ -1296,7 +1317,8 @@ async function handlePlanProposal(query) {
   if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
 
   const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
-  const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback, currentContext || '');
+  const grounding = await buildPlanGrounding();
+  const result = await evaluatePlanProposal(agentProvider, q, formatStancesForLLM(), fallback, grounding);
   if (!result) return { ok: false, error: 'Could not evaluate the proposal (LLM unavailable).' };
 
   let applied = 0, directiveAdded = false;
@@ -1332,15 +1354,10 @@ async function handleAskPlan(query) {
   if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
 
   const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
-  // Ground the answer in the real plan AND the live sweep: stance book + track record + directives,
-  // plus the current market-intelligence digest (news, catalysts, cross-correlation/priority signals,
-  // congress + insider activity) so "why is X moving right now" questions reflect today's data, not
-  // just the stored thesis. currentContext is the same digest the agent sees each sweep.
-  const extra = [
-    `TRACK RECORD: ${buildTrackRecord()}`,
-    `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
-    currentContext ? `\n=== LIVE MARKET SWEEP (current intelligence) ===\n${String(currentContext).slice(0, 6000)}` : '',
-  ].filter(Boolean).join('\n');
+  // Ground the answer in reality: live holdings (what you actually own) + track record + directives +
+  // the current market-intelligence digest — so "what do I hold / why is X moving" reflect today, not
+  // just the stance book (a plan/watchlist that can omit held stocks and lacks position detail).
+  const extra = await buildPlanGrounding();
   const result = await answerPlanQuestion(agentProvider, q, formatStancesForLLM(), extra, fallback);
   if (!result) return { ok: false, error: 'Could not answer (LLM unavailable).' };
 
