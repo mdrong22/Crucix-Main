@@ -1287,7 +1287,25 @@ async function acceptProposal(id, ctx) {
 
   setStatus(id, 'ACCEPTED');
   console.log(`[PROPOSAL] ✅ Accepted — placing ${trade.action} ${trade.symbol}`);
-  const orderRes = await snapTrade.PlaceOrder(trade);
+  // A SELL that covers the whole position (or specifies no size) is a FULL EXIT → sell the exact
+  // owned quantity via ClosePosition, so it flattens cleanly with no leftover dust. A partial trim
+  // (sells less than held) goes through normally with its stated size.
+  let orderRes;
+  if (trade.action === 'SELL') {
+    const heldPos   = (Array.isArray(lastPortfolio) ? lastPortfolio : []).find(x => String(x?.symbol).toUpperCase() === String(trade.symbol).toUpperCase());
+    const heldUnits = heldPos ? parseFloat(heldPos.units) || 0 : 0;
+    const soldUnits = parseFloat(trade.units) || 0;
+    const fullClose = soldUnits <= 0 || (heldUnits > 0 && soldUnits >= heldUnits - 1e-6);
+    if (fullClose) {
+      const cr = await snapTrade.ClosePosition(trade.symbol);
+      orderRes = cr?.closed ? (cr.order || { closed: true }) : null;
+      if (cr?.units) trade.units = cr.units; // log the actual quantity closed
+    } else {
+      orderRes = await snapTrade.PlaceOrder(trade);
+    }
+  } else {
+    orderRes = await snapTrade.PlaceOrder(trade);
+  }
   if (!orderRes) {
     setStatus(id, 'FAILED', { error: 'order-rejected' });
     await telegramAlerter.editMessageText(p.telegramMessageId,
