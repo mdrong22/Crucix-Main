@@ -1383,9 +1383,29 @@ async function buildPlanGrounding() {
     });
     if (stops.length) stopsLine = stops.join(' | ');
   } catch { /* non-fatal */ }
+  // Recent trades (newest first) — the actual executed buys/sells + outcomes, so "what did I trade
+  // today / what was my last buy / how did the DHT trade go" is answerable from the real decision log.
+  let recentLine = 'none logged';
+  try {
+    const decs = (loadDecisions() || []).slice()
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+      .slice(0, 8);
+    if (decs.length) recentLine = decs.map(d => {
+      const dt = d.timestamp ? new Date(d.timestamp).toISOString().slice(5, 10) : '?';  // MM-DD
+      const px = Number(d.entryPrice) > 0 ? `@$${Number(d.entryPrice)}` : '';
+      const u  = d.units != null ? `${d.units}x ` : '';
+      let status = 'open';
+      if (d.resolved) {
+        const pnl = Number(d.pnlPct);  // stored as a fraction (0.05 = 5%)
+        status = `${d.outcome || 'closed'}${Number.isFinite(pnl) ? ` ${pnl >= 0 ? '+' : ''}${(pnl * 100).toFixed(1)}%` : ''}`;
+      }
+      return `${dt} ${d.action} ${d.ticker} ${u}${px} (${d.horizon || '?'}) [${status}]`;
+    }).join(' | ');
+  } catch { /* non-fatal */ }
   return [
     `CURRENT HOLDINGS (live portfolio — ground truth of what you own): ${holdings}`,
     `ACTIVE HARD STOPS (auto-sell, no approval): ${stopsLine}`,
+    `RECENT TRADES (newest first, executed + outcomes): ${recentLine}`,
     `TRACK RECORD: ${buildTrackRecord()}`,
     `STANDING DIRECTIVES: ${formatDirectivesForLLM()}`,
     currentContext ? `\n=== LIVE MARKET SWEEP (current intelligence) ===\n${String(currentContext).slice(0, 6000)}` : '',
