@@ -34,6 +34,7 @@ import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal, answerPlanQuestion } from './lib/llm/planProposal.mjs';
+import { answerNewsQuestion } from './lib/llm/newsAsk.mjs';
 import { generatePlanReport } from './lib/reports/planReport.mjs';
 import { getDirectives, addDirective, formatDirectivesForLLM } from './lib/directives/store.mjs';
 import { evaluateBreaker, getBreakerState } from './lib/risk/circuitBreaker.mjs';
@@ -373,14 +374,28 @@ if (telegramAlerter.isConfigured) {
     return `${emoji} *${r.verdict}*${r.summary ? ` — ${escapeMd(r.summary)}` : ''}\n${escapeMd(r.reasoning)}${changes}`;
   });
 
-  // /ask <question> — READ-ONLY: ask the agent about its plan/thesis; nothing changes.
-  telegramAlerter.onCommand('/ask', async (args, _msgId, chatId) => {
+  // /ask <question> — READ-ONLY. Channel-aware:
+  //   • Trade/proposals channel → ask about the living plan (stance book).
+  //   • News feed channel        → ask about current events / geopolitics; reply to a posted story to
+  //                                ask about THAT story. Grounded in the live sweep intelligence.
+  // If both channels share one chat id, a reply-to-a-story routes to news; a plain /ask stays plan.
+  telegramAlerter.onCommand('/ask', async (args, _msgId, chatId, ctx) => {
     const q = String(args || '').trim();
+    const storyText = ctx?.replyToText || '';
+    const singleChannel = String(telegramAlerter.proposalsChatId) === String(telegramAlerter.chatId);
+    const isNewsChannel = singleChannel ? !!storyText : String(chatId) === String(telegramAlerter.chatId);
+
+    if (isNewsChannel) {
+      if (!q && !storyText) return 'Usage: `/ask <question>` — e.g. `/ask what’s driving oil today?` (or reply to a news story and ask about it).';
+      await telegramAlerter.sendMessage('🌐 Analyzing…', { chatId });
+      const r = await handleAskNews(q, storyText);
+      return r.ok ? `🌐 ${escapeMd(r.answer)}` : `⚠️ ${r.error}`;
+    }
+    // Trade channel → plan Q&A.
     if (!q) return 'Usage: `/ask <question>` — e.g. `/ask why are you holding NVDA?` or `/ask what’s your exit on SLV?`';
     await telegramAlerter.sendMessage('💬 Thinking…', { chatId });
     const r = await handleAskPlan(q);
-    if (!r.ok) return `⚠️ ${r.error}`;
-    return `💬 ${escapeMd(r.answer)}`;
+    return r.ok ? `💬 ${escapeMd(r.answer)}` : `⚠️ ${r.error}`;
   });
 
   // Inline Accept/Deny buttons on proposal cards route here.
@@ -1432,6 +1447,28 @@ async function handleAskPlan(query) {
   if (!result) return { ok: false, error: 'Could not answer (LLM unavailable).' };
 
   console.log(`[PlanAsk] "${q.slice(0, 60)}" → ${result.answer.length} chars (${result.provider}).`);
+  return { ok: true, ...result };
+}
+
+// News-feed /ask — READ-ONLY situational analysis of current events / geopolitics, grounded in the
+// live sweep intelligence (OSINT/news/geo signals) + an optional replied-to story. This is distinct
+// from handleAskPlan: it's about the WORLD, not the stance book, and gives no specific trade calls.
+async function handleAskNews(query, storyText = '') {
+  const q = String(query || '').trim();
+  const story = String(storyText || '').trim();
+  if (!q && !story) {
+    return { ok: false, error: 'Ask a question — e.g. `/ask what’s driving oil today?` (or reply to a news story and ask about it).' };
+  }
+  if (!agentProvider?.isConfigured && !llmProvider?.isConfigured) return { ok: false, error: 'No LLM provider configured.' };
+
+  const fallback = (llmProvider?.isConfigured ? llmProvider : null) || groqIdeasFallback;
+  const intel = currentContext ? String(currentContext).slice(0, 7000) : '';
+  // If the user replied to a story with no question, default to "what's the significance + read-through".
+  const question = q || 'What is the significance of this story, and the likely market read-through?';
+  const result = await answerNewsQuestion(agentProvider, question, intel, story, fallback);
+  if (!result) return { ok: false, error: 'Could not answer (LLM unavailable).' };
+
+  console.log(`[NewsAsk] "${question.slice(0, 60)}"${story ? ' (re: story)' : ''} → ${result.answer.length} chars (${result.provider}).`);
   return { ok: true, ...result };
 }
 
