@@ -1429,14 +1429,18 @@ async function buildPlanGrounding() {
   try { const live = await snapTrade.FetchUserTrades(); if (Array.isArray(live)) port = live; }
   catch (err) { console.warn('[PlanGrounding] live portfolio fetch failed, using cache:', err.message); }
   const holdings = DataCleaner.stringifyPortfolio(Array.isArray(port) ? port : []);
+  const heldSet  = new Set((Array.isArray(port) ? port : []).map(x => String(x?.symbol || '').toUpperCase()).filter(Boolean));
   // Active hard stops per position — the concrete price (or horizon floor) the code will auto-sell at,
-  // so "what's my stop on X" is answerable from real state, not the model's memory.
+  // so "what's my stop on X" is answerable from real state. Only BUY/long decisions on names STILL held
+  // qualify — a SELL decision or a since-closed name has no live stop and would just be noise.
   let stopsLine = 'none logged';
   try {
-    const stops = (getOpenDecisions() || []).filter(d => d?.ticker).map(d => {
-      const sp = Number(d.stopLossPrice) > 0 ? `$${Number(d.stopLossPrice)}` : `${d.horizon || 'SWING'} %-floor`;
-      return `${d.ticker}: hard stop ${sp} (${d.horizon || 'SWING'})`;
-    });
+    const stops = (getOpenDecisions() || [])
+      .filter(d => d?.ticker && String(d.action || '').toUpperCase() !== 'SELL' && heldSet.has(String(d.ticker).toUpperCase()))
+      .map(d => {
+        const sp = Number(d.stopLossPrice) > 0 ? `$${Number(d.stopLossPrice)}` : `${d.horizon || 'SWING'} %-floor`;
+        return `${d.ticker}: hard stop ${sp} (${d.horizon || 'SWING'})`;
+      });
     if (stops.length) stopsLine = stops.join(' | ');
   } catch { /* non-fatal */ }
   // Recent trades (newest first) — the actual executed buys/sells + outcomes, so "what did I trade
@@ -1450,10 +1454,14 @@ async function buildPlanGrounding() {
       const dt = d.timestamp ? new Date(d.timestamp).toISOString().slice(5, 10) : '?';  // MM-DD
       const px = Number(d.entryPrice) > 0 ? `@$${Number(d.entryPrice)}` : '';
       const u  = d.units != null ? `${d.units}x ` : '';
-      let status = 'open';
+      const isSell = String(d.action || '').toUpperCase() === 'SELL';
+      let status;
       if (d.resolved) {
         const pnl = Number(d.pnlPct);  // stored as a fraction (0.05 = 5%)
         status = `${d.outcome || 'closed'}${Number.isFinite(pnl) ? ` ${pnl >= 0 ? '+' : ''}${(pnl * 100).toFixed(1)}%` : ''}`;
+      } else {
+        // A SELL is an exit event, not an open long — never label it "open".
+        status = isSell ? 'exit filled' : 'open';
       }
       return `${dt} ${d.action} ${d.ticker} ${u}${px} (${d.horizon || '?'}) [${status}]`;
     }).join(' | ');
