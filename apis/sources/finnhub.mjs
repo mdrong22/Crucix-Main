@@ -85,6 +85,39 @@ async function fetchInsiderTransactions(apiKey, symbol) {
     }));
 }
 
+/**
+ * Company-specific news for the tickers the agent actually holds/watches. The macro sweep only pulls
+ * broad category headlines, so a single mid-cap's catalyst (a court ruling, a permit loss, an earnings
+ * date, insider/institutional selling) never surfaces. This closes that blind spot by pulling the
+ * dedicated /company-news feed per monitored ticker. Returns { TICKER: [{headline, source, datetime, url}] }.
+ * @param {string[]} tickers  held + active-stance symbols (deduped, capped for rate limits)
+ */
+export async function fetchPositionNews(tickers = []) {
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return {};
+  const uniq = [...new Set((tickers || []).map(t => String(t || '').toUpperCase().trim()).filter(t => /^[A-Z]{1,5}$/.test(t)))].slice(0, 12);
+  if (!uniq.length) return {};
+  const from = daysAgo(5);
+  const to   = today();
+  const out  = {};
+  for (const sym of uniq) {
+    try {
+      const params = new URLSearchParams({ symbol: sym, from, to, token: apiKey });
+      const data   = await safeFetch(`${BASE}/company-news?${params}`, { timeout: 10000 });
+      if (Array.isArray(data) && data.length) {
+        out[sym] = data.slice(0, 4).map(n => ({
+          headline: n.headline,
+          source:   n.source,
+          datetime: n.datetime ? new Date(n.datetime * 1000).toISOString() : null,
+          url:      n.url,
+        })).filter(n => n.headline);
+      }
+    } catch { /* per-ticker failure is non-fatal */ }
+    await new Promise(r => setTimeout(r, 150)); // ~6 req/s — well within 60/min
+  }
+  return out;
+}
+
 export async function briefing() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {

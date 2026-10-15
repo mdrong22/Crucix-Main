@@ -10,6 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
+import { fetchPositionNews } from './apis/sources/finnhub.mjs';
 import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
@@ -786,6 +787,18 @@ async function runSweepCycle() {
     console.log('[Crucix] Synthesizing dashboard data...');
     const [synthesized, userPortfolio, accountOrders ]= await Promise.all([synthesize(rawData), snapTrade.FetchUserTrades(), snapTrade.getBuyDates()]);
     lastPortfolio = Array.isArray(userPortfolio) ? userPortfolio : lastPortfolio;  // cache for Ask/Propose grounding
+
+    // Company-specific news for the names the agent actually holds/watches — the macro sweep only
+    // carries broad category headlines, so a single position's catalyst (a court ruling, permit loss,
+    // earnings date, insider selling) would otherwise be invisible. Monitor held + active-stance tickers.
+    try {
+      const heldSyms   = (Array.isArray(userPortfolio) ? userPortfolio : []).map(p => p?.symbol).filter(Boolean);
+      const stanceSyms = (getStances() || []).map(s => s?.ticker).filter(Boolean);
+      const monitored  = [...new Set([...heldSyms, ...stanceSyms].map(t => String(t).toUpperCase()))];
+      synthesized.positionNews = await fetchPositionNews(monitored);
+      const nTk = Object.keys(synthesized.positionNews).length;
+      if (nTk) console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(synthesized.positionNews).join(', ')}`);
+    } catch (err) { console.warn('[Crucix] Position-news fetch failed (non-fatal):', err.message); }
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
