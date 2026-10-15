@@ -86,36 +86,60 @@ async function fetchInsiderTransactions(apiKey, symbol) {
 }
 
 /**
- * Company-specific news for the tickers the agent actually holds/watches. The macro sweep only pulls
- * broad category headlines, so a single mid-cap's catalyst (a court ruling, a permit loss, an earnings
- * date, insider/institutional selling) never surfaces. This closes that blind spot by pulling the
- * dedicated /company-news feed per monitored ticker. Returns { TICKER: [{headline, source, datetime, url}] }.
+ * Per-position intelligence for the names the agent actually holds/watches — the macro sweep only
+ * carries broad category headlines, so a single position's catalyst would otherwise be invisible.
+ * In ONE pass per ticker this pulls BOTH:
+ *   • news         — /company-news (court rulings, permits, earnings dates, downgrades…)
+ *   • insiderSells — /stock/insider-transactions SELL side (dropped elsewhere), a direct bearish signal
+ *                    on something you own.
  * @param {string[]} tickers  held + active-stance symbols (deduped, capped for rate limits)
+ * @returns {Promise<{news:object, insiderSells:object}>}
  */
-export async function fetchPositionNews(tickers = []) {
+export async function fetchPositionIntel(tickers = []) {
   const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return {};
+  if (!apiKey) return { news: {}, insiderSells: {} };
   const uniq = [...new Set((tickers || []).map(t => String(t || '').toUpperCase().trim()).filter(t => /^[A-Z]{1,5}$/.test(t)))].slice(0, 12);
-  if (!uniq.length) return {};
-  const from = daysAgo(5);
-  const to   = today();
-  const out  = {};
+  if (!uniq.length) return { news: {}, insiderSells: {} };
+  const newsFrom    = daysAgo(5);
+  const insiderFrom = daysAgo(21);   // insider sells over ~3 weeks
+  const to          = today();
+  const news = {}, insiderSells = {};
+
   for (const sym of uniq) {
+    // 1) Company news
     try {
-      const params = new URLSearchParams({ symbol: sym, from, to, token: apiKey });
+      const params = new URLSearchParams({ symbol: sym, from: newsFrom, to, token: apiKey });
       const data   = await safeFetch(`${BASE}/company-news?${params}`, { timeout: 10000 });
       if (Array.isArray(data) && data.length) {
-        out[sym] = data.slice(0, 4).map(n => ({
-          headline: n.headline,
-          source:   n.source,
-          datetime: n.datetime ? new Date(n.datetime * 1000).toISOString() : null,
-          url:      n.url,
+        const items = data.slice(0, 4).map(n => ({
+          headline: n.headline, source: n.source,
+          datetime: n.datetime ? new Date(n.datetime * 1000).toISOString() : null, url: n.url,
         })).filter(n => n.headline);
+        if (items.length) news[sym] = items;
       }
-    } catch { /* per-ticker failure is non-fatal */ }
-    await new Promise(r => setTimeout(r, 150)); // ~6 req/s — well within 60/min
+    } catch { /* non-fatal */ }
+    await new Promise(r => setTimeout(r, 120));
+
+    // 2) Insider SELLS (change < 0 or transactionType 'S') — aggregated per ticker.
+    try {
+      const params = new URLSearchParams({ symbol: sym, from: insiderFrom, token: apiKey });
+      const data   = await safeFetch(`${BASE}/stock/insider-transactions?${params}`, { timeout: 10000 });
+      const sells  = (data?.data || []).filter(t => t.transactionType === 'S' || (Number(t.change) < 0));
+      if (sells.length) {
+        let shares = 0, value = 0; const names = new Set(); let lastDate = null;
+        for (const t of sells) {
+          const chg = Math.abs(Number(t.change) || 0);
+          shares += chg;
+          if (t.transactionPrice) value += chg * Number(t.transactionPrice);
+          if (t.name) names.add(t.name);
+          if (t.transactionDate && (!lastDate || t.transactionDate > lastDate)) lastDate = t.transactionDate;
+        }
+        insiderSells[sym] = { filings: sells.length, sellers: names.size, shares: Math.round(shares), value: Math.round(value), lastDate };
+      }
+    } catch { /* non-fatal */ }
+    await new Promise(r => setTimeout(r, 120));
   }
-  return out;
+  return { news, insiderSells };
 }
 
 export async function briefing() {

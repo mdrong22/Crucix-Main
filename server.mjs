@@ -10,7 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { fetchPositionNews } from './apis/sources/finnhub.mjs';
+import { fetchPositionIntel } from './apis/sources/finnhub.mjs';
 import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
@@ -795,9 +795,12 @@ async function runSweepCycle() {
       const heldSyms   = (Array.isArray(userPortfolio) ? userPortfolio : []).map(p => p?.symbol).filter(Boolean);
       const stanceSyms = (getStances() || []).map(s => s?.ticker).filter(Boolean);
       const monitored  = [...new Set([...heldSyms, ...stanceSyms].map(t => String(t).toUpperCase()))];
-      synthesized.positionNews = await fetchPositionNews(monitored);
-      const nTk = Object.keys(synthesized.positionNews).length;
-      if (nTk) console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(synthesized.positionNews).join(', ')}`);
+      const intel = await fetchPositionIntel(monitored);
+      synthesized.positionNews  = intel.news;
+      synthesized.insiderSells  = intel.insiderSells;
+      const nTk = Object.keys(intel.news).length, nSell = Object.keys(intel.insiderSells).length;
+      if (nTk)   console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(intel.news).join(', ')}`);
+      if (nSell) console.log(`[Crucix] ⚠ Insider SELLING on: ${Object.keys(intel.insiderSells).join(', ')}`);
     } catch (err) { console.warn('[Crucix] Position-news fetch failed (non-fatal):', err.message); }
 
     // 4. Delta computation + memory
