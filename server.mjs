@@ -33,6 +33,7 @@ import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher, derivedStopPrice } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
+import { detectMaCrosses } from './lib/technicals/maCrossStore.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal, answerPlanQuestion } from './lib/llm/planProposal.mjs';
 import { answerNewsQuestion } from './lib/llm/newsAsk.mjs';
@@ -817,6 +818,10 @@ async function runSweepCycle() {
         synthesized.positionTech = tech;
         const reversals = Object.entries(tech).filter(([, t]) => t.belowMA50 && (t.ret1m ?? 0) < 0).map(([s]) => s);
         if (reversals.length) console.log(`[Crucix] ⚠ Technical breakdown (below MA50 + falling) on: ${reversals.join(', ')}`);
+        // Fresh MA CROSSES this sweep (price crossing its MA, or a death/golden cross) — the actionable event.
+        synthesized.maCrosses = detectMaCrosses(tech);
+        const crossTk = Object.keys(synthesized.maCrosses);
+        if (crossTk.length) console.log(`[Crucix] 🔀 MA CROSS this sweep: ${crossTk.map(t => `${t} (${synthesized.maCrosses[t].join('; ')})`).join(' | ')}`);
       } catch (err) { console.warn('[Crucix] Position-technicals scan failed (non-fatal):', err.message); }
     } catch (err) { console.warn('[Crucix] Position-news fetch failed (non-fatal):', err.message); }
 
