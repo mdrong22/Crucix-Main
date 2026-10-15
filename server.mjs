@@ -801,6 +801,23 @@ async function runSweepCycle() {
       const nTk = Object.keys(intel.news).length, nSell = Object.keys(intel.insiderSells).length;
       if (nTk)   console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(intel.news).join(', ')}`);
       if (nSell) console.log(`[Crucix] ⚠ Insider SELLING on: ${Object.keys(intel.insiderSells).join(', ')}`);
+
+      // Per-position TECHNICALS — price vs 50/200-day MA, RSI, trend. This is what catches a moving-
+      // average reversal on a held name (a breakdown below MA50/MA200, momentum rolling over) that the
+      // macro movers screener misses. Held tickers first; capped for Alpaca rate limits.
+      try {
+        const spySetup = await getSetupTechnicals('SPY');
+        const spyRef   = spySetup ? { ret1m: spySetup.ret1m, ret3m: spySetup.ret3m } : null;
+        synthesized.spyRef = spyRef;  // also used downstream; computed once here
+        const techTickers = [...new Set([...heldSyms, ...stanceSyms].map(t => String(t).toUpperCase()))].slice(0, 15);
+        const results = await Promise.all(techTickers.map(sym =>
+          getSetupTechnicals(sym, spyRef).then(t => [sym, t]).catch(() => [sym, null])));
+        const tech = {};
+        for (const [sym, t] of results) if (t && !t.insufficient && t.price != null) tech[sym] = t;
+        synthesized.positionTech = tech;
+        const reversals = Object.entries(tech).filter(([, t]) => t.belowMA50 && (t.ret1m ?? 0) < 0).map(([s]) => s);
+        if (reversals.length) console.log(`[Crucix] ⚠ Technical breakdown (below MA50 + falling) on: ${reversals.join(', ')}`);
+      } catch (err) { console.warn('[Crucix] Position-technicals scan failed (non-fatal):', err.message); }
     } catch (err) { console.warn('[Crucix] Position-news fetch failed (non-fatal):', err.message); }
 
     // 4. Delta computation + memory

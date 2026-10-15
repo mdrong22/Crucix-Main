@@ -205,9 +205,12 @@ export async function getSetupTechnicals(symbol, spyRef = null) {
     return {
       symbol,
       setup,
+      price: parseFloat(latest.toFixed(2)),
       ma50:  parseFloat(ma50.toFixed(2)),
       ma200: parseFloat(ma200.toFixed(2)),
       aboveStack,
+      belowMA50:  latest < ma50,
+      belowMA200: latest < ma200,
       high52: parseFloat(high52.toFixed(2)),
       pctFrom52wHigh: parseFloat(pctFrom52wHigh.toFixed(1)),
       rsi,
