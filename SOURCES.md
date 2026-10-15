@@ -92,3 +92,84 @@ NOAA, EPA RadNet, Patents, Bluesky, KiwiSDR, CelesTrak (space), CISA-KEV, Hacker
 | `TRACK_RECORD_MIN` | 3 | Resolved trades before the track record feeds the agent. | 🧑 |
 | `CALIBRATION_MIN` | 4 | Resolved confidence-tagged trades before calibration feeds the agent. | 🧑 |
 | `STOP_LOSS_INTRADAY` / `_SWING` / `_LONG` (+ `PROFIT_LOCK_*`, `TRAIL_*`) | per-horizon | Hard stop / trailing bands enforced by the stop-loss watcher. | 🧑 |
+
+---
+
+## 4. Source → agent digest-line mapping
+
+What the trading agent actually reads each sweep is the compacted digest
+(`compactSweepForLLM` in `lib/llm/ideas.mjs`), not the raw sources. This maps each **digest line**
+back to its **source** and key. A line only appears when that source returned data that sweep —
+a quiet source just omits its line. The ~39 collected sources distill into these lines, so
+"39 sources" ≠ "39 lines" (several OSINT/geo sources feed `URGENT_OSINT` or aren't surfaced in the
+*trade* digest at all).
+
+### Position-specific — on names you hold or have a stance on
+| Digest line | Source | Key |
+|---|---|---|
+| `MA_CROSS` (fresh 50/200-day MA crosses, death/golden cross) | Alpaca bars + `runs/ma-state.json` diff | `ALPACA_API_KEY` |
+| `POSITION_TECHNICALS` (price vs MA50/200, RSI, 1m/3m, trend) | Alpaca (`getSetupTechnicals`) | `ALPACA_API_KEY` |
+| `POSITION_NEWS` (company-specific headlines) | Finnhub `/company-news` | `FINNHUB_API_KEY` |
+| `INSIDER_SELLS` (execs/directors reducing) | Finnhub `/stock/insider-transactions` | `FINNHUB_API_KEY` |
+| `INSTITUTIONAL_SELLS` (13F funds cutting stakes) | Finnhub `/institutional-ownership` | `FINNHUB_API_KEY` (paid tier) |
+
+### Insider / congressional / filings
+| Digest line | Source | Key |
+|---|---|---|
+| `CONGRESS_INSIDERS`, `CONGRESS_CLUSTER_BUYS` | Bargo | `BARGO_API_KEY` (keyless at lower limit) |
+| `EXEC_INSIDER_BUYS` | Finnhub insider transactions (watchlist) | `FINNHUB_API_KEY` |
+| `SEC_INSIDER_FILINGS` (Form 4), `SEC_MATERIAL_EVENTS` (8-K) | SEC EDGAR | keyless (`SEC_USER_AGENT`) |
+
+### Macro / economic
+| Digest line | Source | Key |
+|---|---|---|
+| `ECONOMIC` (VIX, fed funds, 10y/2y, HY spread, dollar, mortgage) | FRED | `FRED_API_KEY` |
+| `TREASURY` (total debt) | US Treasury | keyless |
+| `LABOR` (CPI/PPI/payrolls) | BLS | `BLS_API_KEY` (keyless at lower limit) |
+| `SUPPLY_CHAIN` (GSCPI) | NY Fed GSCPI | keyless |
+| `MACRO_CALENDAR` (FOMC/CPI/NFP/GDP) | FMP econ calendar | `FMP_API_KEY` |
+
+### Energy / commodities / market
+| Digest line | Source | Key |
+|---|---|---|
+| `ENERGY`, `EIA_SIGNALS` (WTI/Brent/NatGas/crude stocks) | EIA | `EIA_API_KEY` |
+| `METALS` (gold/silver) | Yahoo | keyless |
+| `MARKET_MOVES` (indexes/commodities/rates) | Yahoo | keyless |
+| `MARKET_LOSERS`, `MARKET_GAINERS` | Yahoo movers screener | keyless |
+
+### Equities news / flow
+| Digest line | Source | Key |
+|---|---|---|
+| `FAST_NEWS`, `OPTIONS_SWEEPS`/`OPTIONS_FLOW`, `UPGRADES_DOWNGRADES_NEWS` | Benzinga | `BENZINGA_API_KEY` (RSS-only without) |
+| `ANALYST_CALLS` | FMP upgrades/downgrades | `FMP_API_KEY` |
+| `FINNHUB_SIGNALS`, `M&A_HEADLINES`, `EARNINGS_CALENDAR` | Finnhub | `FINNHUB_API_KEY` |
+| `NEWSAPI_SIGNALS`, `MA_DEALS` | NewsAPI | `NEWS_API_KEY` |
+| `SEMI_PRICING`, `SEMI_SIGNALS` (DRAM/NAND, B2B ratio) | TrendForce | keyless |
+
+### Policy / government / defense
+| Digest line | Source | Key |
+|---|---|---|
+| `POLICY_ACTIONS` (executive actions) | Federal Register | keyless |
+| `CHIPS_GRANTS`, `BIS_EXPORT_CONTROLS` | CHIPS Act / BIS | keyless |
+| `DEFENSE_CONTRACTS` | USAspending | keyless |
+
+### Geopolitical / OSINT
+| Digest line | Source | Key |
+|---|---|---|
+| `URGENT_OSINT` | Telegram OSINT channels | `TELEGRAM_CHANNELS` + bot token |
+| `WHO_ALERTS` | WHO | keyless |
+| `MARITIME_CHOKEPOINTS` | ships / static reference | keyless (`AISSTREAM_API_KEY` for live AIS) |
+| `NUCLEAR_ANOMALY` | Safecast | keyless |
+| `SOCIAL_VIRAL` | Reddit | `REDDIT_CLIENT_ID`/`SECRET` |
+| `THERMAL` (fire detections), `AIR_ACTIVITY` (ADS-B) | FIRMS / ADS-B | **stripped from the trade agent's context** (kept for the free ideas pass) |
+
+### Reasoning layer wrapped around the digest
+Not sources — assembled in `buildAnalystContext`: **FORWARD-PACING THESES** (megatrends) ·
+`DELTA_SINCE_LAST_SWEEP` / `ESCALATED` / `NEW_SIGNALS` · **account state** (portfolio, open orders,
+buying power, PDT) · **stance book**, **track record**, **confidence calibration**, **directives**,
+**strategy mode**.
+
+> Collected-but-not-in-the-trade-digest sources (ACLED, GDELT, ReliefWeb, OFAC, OpenSanctions,
+> patents, NOAA, EPA, Bluesky, HackerNews, KiwiSDR, CelesTrak, CISA-KEV, Cloudflare Radar, Comtrade,
+> OpenSky) run in the full sweep for the dashboard / ideas pass; they either feed `URGENT_OSINT`
+> context or aren't surfaced as a trade-agent line.
