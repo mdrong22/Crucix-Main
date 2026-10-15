@@ -34,6 +34,7 @@ import { startStopLossWatcher, derivedStopPrice } from './lib/alerts/stopLossWat
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
 import { detectMaCrosses } from './lib/technicals/maCrossStore.mjs';
+import { harvestAndScore, annotateBoard } from './lib/discovery/discover.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal, answerPlanQuestion } from './lib/llm/planProposal.mjs';
 import { answerNewsQuestion } from './lib/llm/newsAsk.mjs';
@@ -800,11 +801,13 @@ async function runSweepCycle() {
       const valid = t => /^[A-Z]{1,5}$/.test(t);
       const heldSyms   = (Array.isArray(userPortfolio) ? userPortfolio : []).map(p => p?.symbol).filter(Boolean).map(up);
       const stanceSyms = (getStances() || []).map(s => s?.ticker).filter(Boolean).map(up);
-      const thesisSyms = (synthesized.theses || []).flatMap(t => t?.targetTickers || []).map(up);
-      const ideaSyms   = (Array.isArray(lastGoodIdeas) ? lastGoodIdeas : []).map(i => i?.ticker).filter(Boolean).map(up);
-      const candidateSyms = [...new Set([...thesisSyms, ...ideaSyms])].filter(valid);
-      // Priority order so caps keep what matters: your positions first, then stances, then candidates.
       const ownSet    = new Set([...heldSyms, ...stanceSyms].filter(valid));
+      // DISCOVERY (Phase 1) — harvest a scored candidate universe from the signals already in the sweep
+      // (congress/insider buys, upgrades, option sweeps, 8-Ks, movers, theses, prior ideas), excluding
+      // names you already hold. The top-scored candidates get enriched (news + chart) alongside holdings,
+      // then ranked into a MARKET_SETUPS board the agent picks NEW_BUYs from.
+      const scored = harvestAndScore(synthesized, { exclude: new Set(heldSyms), ideas: lastGoodIdeas });
+      const candidateSyms = scored.slice(0, 12).map(c => c.ticker);
       const monitored = [...new Set([...heldSyms, ...stanceSyms, ...candidateSyms].filter(valid))];
       const intel = await fetchPositionIntel(monitored);
       synthesized.positionNews  = intel.news;
@@ -844,6 +847,17 @@ async function runSweepCycle() {
         const crossTk = Object.keys(synthesized.maCrosses);
         if (crossTk.length) console.log(`[Crucix] 🔀 MA CROSS this sweep: ${crossTk.map(t => `${t} (${synthesized.maCrosses[t].join('; ')})`).join(' | ')}`);
       } catch (err) { console.warn('[Crucix] Position-technicals scan failed (non-fatal):', err.message); }
+
+      // DISCOVERY BOARD — fold the enrichment (chart setup, news, insider/13F selling) into the scored
+      // candidates and rank → MARKET_SETUPS. This is the agent's vetted NEW-BUY shortlist.
+      try {
+        const board = annotateBoard(scored.slice(0, 12), {
+          positionTech: synthesized.positionTech, positionNews: synthesized.positionNews,
+          insiderSells: synthesized.insiderSells, institutionalSells: synthesized.institutionalSells,
+        }).filter(c => c.score > 0).slice(0, 8);
+        synthesized.marketSetups = board;
+        if (board.length) console.log(`[Crucix] 🔭 Discovery board (${board.length}): ${board.map(c => `${c.ticker}(${c.score}${c.setup ? '/' + c.setup : ''})`).join(', ')}`);
+      } catch (err) { console.warn('[Crucix] Discovery board failed (non-fatal):', err.message); }
     } catch (err) { console.warn('[Crucix] Position-news fetch failed (non-fatal):', err.message); }
 
     // 4. Delta computation + memory
