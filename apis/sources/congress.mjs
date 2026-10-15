@@ -337,7 +337,10 @@ async function fetchBargoTrades() {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers });
     if (res.status === 429) {
-      console.warn('[Congress] Bargo rate-limited (429) — set BARGO_API_KEY to raise daily limits.');
+      // Diagnostic: a 429 on a ~once-daily call (24h cache) almost always means the key isn't loaded.
+      console.warn(key
+        ? `[Congress] Bargo rate-limited (429) DESPITE BARGO_API_KEY (…${String(key).slice(-4)}). Key may be invalid/expired, or the keyed daily limit (100 req/1000 rows) is exhausted.`
+        : '[Congress] Bargo rate-limited (429) — no BARGO_API_KEY detected in this process. Free tier is low and shared by IP. Set BARGO_API_KEY (and restart) to raise limits.');
       return { trades: [], rateLimited: true };
     }
     if (!res.ok) {
