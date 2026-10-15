@@ -10,7 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { fetchPositionIntel } from './apis/sources/finnhub.mjs';
+import { fetchPositionIntel, fetchInstitutionalSells } from './apis/sources/finnhub.mjs';
 import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
@@ -802,6 +802,13 @@ async function runSweepCycle() {
       const nTk = Object.keys(intel.news).length, nSell = Object.keys(intel.insiderSells).length;
       if (nTk)   console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(intel.news).join(', ')}`);
       if (nSell) console.log(`[Crucix] ⚠ Insider SELLING on: ${Object.keys(intel.insiderSells).join(', ')}`);
+
+      // 13F institutional selling (quarterly, cached) — slower heavy-money signal on held/watch names.
+      try {
+        synthesized.institutionalSells = await fetchInstitutionalSells(monitored);
+        const nInst = Object.keys(synthesized.institutionalSells).length;
+        if (nInst) console.log(`[Crucix] ⚠ Institutional (13F) reducing: ${Object.keys(synthesized.institutionalSells).join(', ')}`);
+      } catch (err) { console.warn('[Crucix] 13F fetch failed (non-fatal):', err.message); }
 
       // Per-position TECHNICALS — price vs 50/200-day MA, RSI, trend. This is what catches a moving-
       // average reversal on a held name (a breakdown below MA50/MA200, momentum rolling over) that the

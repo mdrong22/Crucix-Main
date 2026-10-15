@@ -142,6 +142,55 @@ export async function fetchPositionIntel(tickers = []) {
   return { news, insiderSells };
 }
 
+// 13F institutional ownership is quarterly — cache per ticker so repeated sweeps don't refetch.
+const _instCache = new Map();           // symbol → { t, v }
+const INST_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+
+/**
+ * 13F institutional SELLING per ticker — institutions that REDUCED their stake in the latest quarterly
+ * filing (a slower, heavier-money signal than corporate insiders). Uses Finnhub's institutional-ownership
+ * endpoint (needs a plan tier that includes it; no-ops gracefully otherwise). Quarterly-cached.
+ * Returns { TICKER: { reducers, adders, sharesReduced, topSellers, period } }.
+ */
+export async function fetchInstitutionalSells(tickers = []) {
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return {};
+  const uniq = [...new Set((tickers || []).map(t => String(t || '').toUpperCase().trim()).filter(t => /^[A-Z]{1,5}$/.test(t)))].slice(0, 12);
+  if (!uniq.length) return {};
+  const now = Date.now();
+  const out = {};
+  for (const sym of uniq) {
+    const cached = _instCache.get(sym);
+    if (cached && now - cached.t < INST_TTL_MS) { if (cached.v) out[sym] = cached.v; continue; }
+    try {
+      const params = new URLSearchParams({ symbol: sym, from: daysAgo(120), to: today(), token: apiKey });
+      const data   = await safeFetch(`${BASE}/institutional-ownership?${params}`, { timeout: 10000 });
+      const report = data?.data?.[0]?.report || [];
+      let v = null;
+      if (report.length) {
+        const reducers = report.filter(r => Number(r.change) < 0);
+        if (reducers.length) {
+          let sharesReduced = 0;
+          for (const r of reducers) sharesReduced += Math.abs(Number(r.change) || 0);
+          const topSellers = reducers.slice().sort((a, b) => Math.abs(Number(b.change) || 0) - Math.abs(Number(a.change) || 0))
+            .slice(0, 2).map(r => r.name).filter(Boolean);
+          v = {
+            reducers:      reducers.length,
+            adders:        report.filter(r => Number(r.change) > 0).length,
+            sharesReduced: Math.round(sharesReduced),
+            topSellers,
+            period:        data.data[0].reportDate || null,
+          };
+        }
+      }
+      _instCache.set(sym, { t: now, v });
+      if (v) out[sym] = v;
+    } catch { _instCache.set(sym, { t: now, v: null }); }
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return out;
+}
+
 export async function briefing() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
