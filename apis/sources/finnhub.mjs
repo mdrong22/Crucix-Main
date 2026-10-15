@@ -98,7 +98,9 @@ async function fetchInsiderTransactions(apiKey, symbol) {
 export async function fetchPositionIntel(tickers = []) {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) return { news: {}, insiderSells: {} };
-  const uniq = [...new Set((tickers || []).map(t => String(t || '').toUpperCase().trim()).filter(t => /^[A-Z]{1,5}$/.test(t)))].slice(0, 12);
+  // Cap for rate limits (60/min). Covers held + stance + discovery candidates, which the caller
+  // orders by priority (positions first) so the cap keeps what matters most.
+  const uniq = [...new Set((tickers || []).map(t => String(t || '').toUpperCase().trim()).filter(t => /^[A-Z]{1,5}$/.test(t)))].slice(0, 18);
   if (!uniq.length) return { news: {}, insiderSells: {} };
   const newsFrom    = daysAgo(5);
   const insiderFrom = daysAgo(21);   // insider sells over ~3 weeks

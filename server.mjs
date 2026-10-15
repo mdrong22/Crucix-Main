@@ -789,23 +789,35 @@ async function runSweepCycle() {
     const [synthesized, userPortfolio, accountOrders ]= await Promise.all([synthesize(rawData), snapTrade.FetchUserTrades(), snapTrade.getBuyDates()]);
     lastPortfolio = Array.isArray(userPortfolio) ? userPortfolio : lastPortfolio;  // cache for Ask/Propose grounding
 
-    // Company-specific news for the names the agent actually holds/watches — the macro sweep only
-    // carries broad category headlines, so a single position's catalyst (a court ruling, permit loss,
-    // earnings date, insider selling) would otherwise be invisible. Monitor held + active-stance tickers.
+    // Company-specific news/technicals for the names the agent holds/watches AND the DISCOVERY candidates
+    // it's considering — the macro sweep only carries broad category headlines, so a position's or a
+    // candidate's own catalyst (court ruling, permit loss, earnings, insider/technical) would be invisible.
+    // Candidates = forward-pacing thesis targets + the last ideas set (ideas are throttled/reused, so the
+    // prior set ≈ the current one most sweeps; a brand-new idea ticker is covered on the next sweep). This
+    // lets the agent vet a NEW_BUY candidate with the same news + chart depth it has on a held name.
     try {
-      const heldSyms   = (Array.isArray(userPortfolio) ? userPortfolio : []).map(p => p?.symbol).filter(Boolean);
-      const stanceSyms = (getStances() || []).map(s => s?.ticker).filter(Boolean);
-      const monitored  = [...new Set([...heldSyms, ...stanceSyms].map(t => String(t).toUpperCase()))];
+      const up = t => String(t || '').toUpperCase().trim();
+      const valid = t => /^[A-Z]{1,5}$/.test(t);
+      const heldSyms   = (Array.isArray(userPortfolio) ? userPortfolio : []).map(p => p?.symbol).filter(Boolean).map(up);
+      const stanceSyms = (getStances() || []).map(s => s?.ticker).filter(Boolean).map(up);
+      const thesisSyms = (synthesized.theses || []).flatMap(t => t?.targetTickers || []).map(up);
+      const ideaSyms   = (Array.isArray(lastGoodIdeas) ? lastGoodIdeas : []).map(i => i?.ticker).filter(Boolean).map(up);
+      const candidateSyms = [...new Set([...thesisSyms, ...ideaSyms])].filter(valid);
+      // Priority order so caps keep what matters: your positions first, then stances, then candidates.
+      const ownSet    = new Set([...heldSyms, ...stanceSyms].filter(valid));
+      const monitored = [...new Set([...heldSyms, ...stanceSyms, ...candidateSyms].filter(valid))];
       const intel = await fetchPositionIntel(monitored);
       synthesized.positionNews  = intel.news;
       synthesized.insiderSells  = intel.insiderSells;
       const nTk = Object.keys(intel.news).length, nSell = Object.keys(intel.insiderSells).length;
-      if (nTk)   console.log(`[Crucix] Position news pulled for ${nTk} held/watch ticker(s): ${Object.keys(intel.news).join(', ')}`);
+      if (candidateSyms.length) console.log(`[Crucix] Discovery candidates in intel scan: ${candidateSyms.filter(t => !ownSet.has(t)).slice(0, 12).join(', ') || '(all already held/watched)'}`);
+      if (nTk)   console.log(`[Crucix] Position/candidate news pulled for ${nTk} ticker(s): ${Object.keys(intel.news).join(', ')}`);
       if (nSell) console.log(`[Crucix] ⚠ Insider SELLING on: ${Object.keys(intel.insiderSells).join(', ')}`);
 
-      // 13F institutional selling (quarterly, cached) — slower heavy-money signal on held/watch names.
+      // 13F institutional selling (quarterly, cached) — held/stance only (a distribution signal on what
+      // you OWN; no need to spend the paid endpoint on discovery candidates).
       try {
-        synthesized.institutionalSells = await fetchInstitutionalSells(monitored);
+        synthesized.institutionalSells = await fetchInstitutionalSells([...ownSet]);
         const nInst = Object.keys(synthesized.institutionalSells).length;
         if (nInst) console.log(`[Crucix] ⚠ Institutional (13F) reducing: ${Object.keys(synthesized.institutionalSells).join(', ')}`);
       } catch (err) { console.warn('[Crucix] 13F fetch failed (non-fatal):', err.message); }
@@ -817,7 +829,9 @@ async function runSweepCycle() {
         const spySetup = await getSetupTechnicals('SPY');
         const spyRef   = spySetup ? { ret1m: spySetup.ret1m, ret3m: spySetup.ret3m } : null;
         synthesized.spyRef = spyRef;  // also used downstream; computed once here
-        const techTickers = [...new Set([...heldSyms, ...stanceSyms].map(t => String(t).toUpperCase()))].slice(0, 15);
+        // Technicals for holdings + stances + discovery candidates — so a NEW_BUY candidate's chart
+        // (setup grade, RS vs SPY, MA position) is in front of the agent before it proposes the buy.
+        const techTickers = monitored.slice(0, 20);
         const results = await Promise.all(techTickers.map(sym =>
           getSetupTechnicals(sym, spyRef).then(t => [sym, t]).catch(() => [sym, null])));
         const tech = {};
