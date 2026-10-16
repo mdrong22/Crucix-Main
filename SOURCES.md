@@ -92,6 +92,11 @@ NOAA, EPA RadNet, Patents, Bluesky, KiwiSDR, CelesTrak (space), CISA-KEV, Hacker
 | `TRACK_RECORD_MIN` | 3 | Resolved trades before the track record feeds the agent. | 🧑 |
 | `CALIBRATION_MIN` | 4 | Resolved confidence-tagged trades before calibration feeds the agent. | 🧑 |
 | `STOP_LOSS_INTRADAY` / `_SWING` / `_LONG` (+ `PROFIT_LOCK_*`, `TRAIL_*`) | per-horizon | Hard stop / trailing bands enforced by the stop-loss watcher. | 🧑 |
+| `MA_CROSS_MARGIN` | 0.0075 | Hysteresis band — price must clear a moving average by this fraction (0.75%) for a cross to fire. Bigger = fewer, higher-conviction crosses (less whipsaw). | 🧑 |
+| `ANTICHURN_WINDOW_MIN` | 45 | Minutes after entry during which a losing position can't be soft-exited (hard stop still fires). 0 = disabled. | 🧑 |
+| `ANTICHURN_MIN_PROFIT_PCT` | 0.3 | Inside that window, a position can only be flipped early if up at least this % (winners scalp fast; losers hold to the stop). | 🧑 |
+| `ALLOW_EXTENDED_HOURS_ENTRY` | false | When false, a NEW_BUY only fires in the regular 9:30–16:00 ET session (pre/after-market = noise). Exits are never gated. | 🧑 |
+| `DISCOVERY_MIN_SCORE` | 3 | Minimum composite score for a candidate to reach the MARKET_SETUPS board — filters single-signal noise. | 🧑 |
 
 ---
 

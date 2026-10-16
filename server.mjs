@@ -67,6 +67,10 @@ let lastPortfolio = null;  // Live holdings from the last sweep — ground truth
 // whipsawed out on a reversed signal (the hard stop still protects the downside). 0 window = disabled.
 const ANTICHURN_WINDOW_MIN     = parseFloat(process.env.ANTICHURN_WINDOW_MIN ?? '45');
 const ANTICHURN_MIN_PROFIT_PCT = parseFloat(process.env.ANTICHURN_MIN_PROFIT_PCT ?? '0.3');
+// Noise elimination: new entries off a technical trigger only in the regular session (not pre/post-market),
+// and only candidates with real conviction (composite discovery score ≥ min) reach the agent's board.
+const ALLOW_EXTENDED_HOURS_ENTRY = /^(1|true|yes)$/i.test(process.env.ALLOW_EXTENDED_HOURS_ENTRY ?? '');
+const DISCOVERY_MIN_SCORE        = parseFloat(process.env.DISCOVERY_MIN_SCORE ?? '3');
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
@@ -140,6 +144,16 @@ function isMarketWindow() {
   if (day === 0 || day === 6) return false;            // weekends
   const h = et.getHours() + et.getMinutes() / 60;
   return h >= 9.0 && h <= 16.5;                       // 9:00 AM – 4:30 PM ET
+}
+
+// STRICT regular session (9:30 AM – 4:00 PM ET, weekdays). Pre/after-market price + MA readings are
+// thin and noisy — new entries off a technical trigger there whipsaw (the RIG case). NEW_BUYs require
+// this unless ALLOW_EXTENDED_HOURS_ENTRY is set. Maintenance/exits are NOT gated (you must manage risk anytime).
+function isRegularSession() {
+  const et  = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  if (et.getDay() === 0 || et.getDay() === 6) return false;
+  const h = et.getHours() + et.getMinutes() / 60;
+  return h >= 9.5 && h < 16.0;                          // 9:30 AM – 4:00 PM ET
 }
 
 // Reads the most recent logged decision from decisions.json.
@@ -859,7 +873,7 @@ async function runSweepCycle() {
         const board = annotateBoard(scored.slice(0, 12), {
           positionTech: synthesized.positionTech, positionNews: synthesized.positionNews,
           insiderSells: synthesized.insiderSells, institutionalSells: synthesized.institutionalSells,
-        }).filter(c => c.score > 0).slice(0, 8);
+        }).filter(c => c.score >= DISCOVERY_MIN_SCORE).slice(0, 8);  // min-conviction: drop single-signal noise
         synthesized.marketSetups = board;
         if (board.length) console.log(`[Crucix] 🔭 Discovery board (${board.length}): ${board.map(c => `${c.ticker}(${c.score}${c.setup ? '/' + c.setup : ''})`).join(', ')}`);
       } catch (err) { console.warn('[Crucix] Discovery board failed (non-fatal):', err.message); }
@@ -1238,6 +1252,15 @@ async function runProposalCycle(context) {
   //     MAINTENANCE/exits are always allowed — you must be able to manage what you already hold).
   if (proposal.action === 'NEW_BUY' && proposal.horizon && !effectiveHorizons.includes(proposal.horizon)) {
     console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${effectiveHorizons.join(',')}] (mode: ${activeMode.label}).`);
+    return;
+  }
+
+  // 4a0. Regular-session gate — a NEW_BUY off a technical trigger needs the 9:30–16:00 ET session;
+  //      pre/after-market readings are thin and noisy (the RIG whipsaw fired pre-open). Exits/maintenance
+  //      are never gated. Override with ALLOW_EXTENDED_HOURS_ENTRY for intentional extended-hours trading.
+  if (proposal.action === 'NEW_BUY' && !ALLOW_EXTENDED_HOURS_ENTRY && !isRegularSession()) {
+    console.log(`[PROPOSAL] ⛔ New-buy blocked — ${proposal.ticker}: outside regular session (pre/after-market noise). Set ALLOW_EXTENDED_HOURS_ENTRY to permit.`);
+    setCycle('NO_ACTION', `${proposal.ticker} buy held — outside regular hours (noise guard)`);
     return;
   }
 
