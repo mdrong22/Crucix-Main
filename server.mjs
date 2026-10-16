@@ -62,6 +62,11 @@ let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 let currentContext = null;
 let lastPortfolio = null;  // Live holdings from the last sweep — ground truth for Ask/Propose "what do I hold"
+// Anti-churn: a position entered less than ANTICHURN_WINDOW_MIN ago may only be soft-exited (MAINTENANCE
+// SELL) if it's up at least ANTICHURN_MIN_PROFIT_PCT — so winners can be scalped fast but losers aren't
+// whipsawed out on a reversed signal (the hard stop still protects the downside). 0 window = disabled.
+const ANTICHURN_WINDOW_MIN     = parseFloat(process.env.ANTICHURN_WINDOW_MIN ?? '45');
+const ANTICHURN_MIN_PROFIT_PCT = parseFloat(process.env.ANTICHURN_MIN_PROFIT_PCT ?? '0.3');
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
@@ -1234,6 +1239,27 @@ async function runProposalCycle(context) {
   if (proposal.action === 'NEW_BUY' && proposal.horizon && !effectiveHorizons.includes(proposal.horizon)) {
     console.log(`[PROPOSAL] Skipped — ${proposal.ticker} (${proposal.horizon}) not in allowed types [${effectiveHorizons.join(',')}] (mode: ${activeMode.label}).`);
     return;
+  }
+
+  // 4a1. Anti-churn — don't SOFT-exit a position entered < window ago at a loss/breakeven; that's a
+  //      whipsaw (the RIG case: bought a 50MA reclaim, dumped it 26 min later when the MA reversed).
+  //      A winner can STILL be scalped fast (exit allowed when up ≥ the min-profit threshold); the hard
+  //      stop always protects the downside, so blocking a loss-exit here just lets it reach its stop or
+  //      recover instead of locking a noise-driven loss.
+  if (ANTICHURN_WINDOW_MIN > 0 && proposal.action === 'MAINTENANCE' && proposal.side === 'SELL') {
+    const dec = getOpenDecisions()
+      .filter(d => d?.ticker === proposal.ticker && String(d.action || '').toUpperCase() === 'BUY')
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+    if (dec?.timestamp) {
+      const ageMin = (Date.now() - new Date(dec.timestamp).getTime()) / 60000;
+      const pos    = (Array.isArray(lastPortfolio) ? lastPortfolio : []).find(p => String(p?.symbol).toUpperCase() === proposal.ticker);
+      const pnlPct = pos ? parseFloat(pos.pnl_pct) : null; // percent, e.g. -0.57
+      if (ageMin < ANTICHURN_WINDOW_MIN && pnlPct != null && pnlPct < ANTICHURN_MIN_PROFIT_PCT) {
+        console.log(`[PROPOSAL] 🚫 Anti-churn — ${proposal.ticker} entered ${ageMin.toFixed(0)}m ago at ${pnlPct}% (< +${ANTICHURN_MIN_PROFIT_PCT}% to flip early). Holding; hard stop still protects downside.`);
+        setCycle('NO_ACTION', `Anti-churn: holding ${proposal.ticker} (entered ${ageMin.toFixed(0)}m ago, ${pnlPct}%)`);
+        return;
+      }
+    }
   }
 
   // 4a2. Hard daily cap — a NEW_BUY beyond the day's budget is dropped (exits/maintenance exempt).
