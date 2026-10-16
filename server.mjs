@@ -1475,8 +1475,31 @@ async function acceptProposal(id, ctx) {
     console.log(`[STANCE] Post-trade sync — ${trade.symbol} → ${outcome} (held set: ${heldNow.size}).`);
   } catch (err) { console.error('[STANCE] post-trade sync failed:', err.message); }
 
+  // On a SELL, compute the realized result (original buy price → exit, up/down, win/loss) so the report
+  // shows what the trade actually made, not just the decision to exit. Cost basis from the pre-sale
+  // portfolio (avg_cost), else the logged BUY's entry; exit from the fill/limit or live quote.
+  let sellPnl = null;
+  if (trade.action === 'SELL') {
+    try {
+      const posPrev = (Array.isArray(lastPortfolio) ? lastPortfolio : []).find(x => String(x?.symbol).toUpperCase() === String(trade.symbol).toUpperCase());
+      const dec     = getOpenDecisions().filter(d => d?.ticker === trade.symbol && String(d.action || '').toUpperCase() === 'BUY')
+        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+      const entry = posPrev ? parseFloat(posPrev.avg_cost) : (dec ? parseFloat(dec.entryPrice) : NaN);
+      const exit  = Number(trade.price) > 0 ? Number(trade.price) : (Number(livePrice) > 0 ? Number(livePrice) : NaN);
+      const units = parseFloat(trade.units) || (posPrev ? parseFloat(posPrev.units) : NaN);
+      if (entry > 0 && exit > 0) {
+        const pnlPct = (exit - entry) / entry * 100;
+        sellPnl = {
+          entry, exit, units: Number.isFinite(units) ? units : null,
+          pnlPct, pnlDollar: Number.isFinite(units) ? (exit - entry) * units : null,
+          verdict: pnlPct > 0.2 ? 'WIN' : pnlPct < -0.2 ? 'LOSS' : 'BREAKEVEN',
+        };
+      }
+    } catch (err) { console.warn('[TradeReport] sell P&L calc failed:', err.message); }
+  }
+
   // Per-trade report for the dashboard report viewer (restored for the single-agent model).
-  try { generateTradeReport(p, { auto: !!ctx?.auto, orderId }); }
+  try { generateTradeReport(p, { auto: !!ctx?.auto, orderId, pnl: sellPnl }); }
   catch (err) { console.error('[TradeReport] generation failed:', err.message); }
 
   setCycle(ctx?.auto ? 'AUTO_EXECUTED' : 'EXECUTED', `${trade.action} ${trade.symbol} placed`, { ticker: trade.symbol });
