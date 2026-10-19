@@ -1405,10 +1405,49 @@ async function loadStances(){
       const tk=s.held?('<span class="held">★ '+esc(s.ticker)+'</span>'):esc(s.ticker);
       return '<div class="st-row" style="cursor:pointer" title="Ask Claude about this plan" onclick="askStance(\''+esc(s.ticker)+'\')">'+'<div class="st-tk">'+tk+'</div>'+
         '<div class="st-body"><div style="display:flex;align-items:center;gap:8px">'+
-        '<span class="st-badge sb-'+esc(s.stance)+'">'+esc(s.stance)+'</span>'+conf+'</div>'+
+        '<span class="st-badge sb-'+esc(s.stance)+'" title="Click to change tag" style="cursor:pointer" onclick="event.stopPropagation();openTagMenu(\''+esc(s.ticker)+'\',\''+esc(s.stance)+'\',event)">'+esc(s.stance)+' ✎</span>'+conf+'</div>'+
         '<div class="st-thesis">'+esc(s.thesis||'')+'</div>'+plan+exit+'</div></div>';
     }).join('');
   }catch(e){}
+}
+
+// ── Stance tag editor — direct user override of a stance tag (applies immediately, no agent judgment).
+const STANCE_TAGS=['WATCH','ACCUMULATE','HOLD','TRIM','EXIT','AVOID'];
+let _tagMenuEl=null;
+function closeTagMenu(){ if(_tagMenuEl){_tagMenuEl.remove();_tagMenuEl=null;document.removeEventListener('click',closeTagMenu);} }
+function openTagMenu(ticker,cur,ev){
+  closeTagMenu();
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--red-border);border-radius:6px;padding:6px;box-shadow:0 4px 24px rgba(0,0,0,.65);display:flex;flex-direction:column;gap:3px;min-width:150px';
+  const title=document.createElement('div');title.textContent='Set '+ticker+' tag';title.style.cssText='font-size:9px;color:var(--dim);padding:2px 4px 5px;letter-spacing:.08em';m.appendChild(title);
+  for(const t of STANCE_TAGS){
+    const b=document.createElement('button');
+    b.textContent=(t===cur?'● ':'  ')+t;
+    b.className='report-filter-btn';
+    b.style.cssText='text-align:left;font-size:11px;padding:4px 8px'+(t===cur?';border-color:var(--red);color:var(--red)':'');
+    b.onclick=(e)=>{e.stopPropagation();setStanceTag(ticker,t);};
+    m.appendChild(b);
+  }
+  const close=document.createElement('button');
+  close.textContent='🗑 CLOSE (remove)';
+  close.className='report-filter-btn';
+  close.style.cssText='text-align:left;font-size:11px;padding:4px 8px;margin-top:4px;opacity:.85';
+  close.onclick=(e)=>{e.stopPropagation(); if(confirm('Remove '+ticker+' from the plan?')) setStanceTag(ticker,'CLOSE');};
+  m.appendChild(close);
+  document.body.appendChild(m);
+  m.style.left=Math.min(ev.clientX, window.innerWidth-170)+'px';
+  m.style.top=Math.min(ev.clientY, window.innerHeight-280)+'px';
+  _tagMenuEl=m;
+  setTimeout(()=>document.addEventListener('click',closeTagMenu),10);
+}
+async function setStanceTag(ticker,tag){
+  closeTagMenu();
+  try{
+    const r=await fetch('/api/stance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker,stance:tag})});
+    const j=await r.json();
+    if(!r.ok){alert(j.error||'Failed to set tag');return;}
+    loadStances();
+  }catch(e){alert('Failed: '+e.message);}
 }
 
 // ── LIVE ticker strip — Fortune 500 / mega-cap marquee (server-cached /api/ticker)

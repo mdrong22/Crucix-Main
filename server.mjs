@@ -32,7 +32,7 @@ import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher, derivedStopPrice } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
-import { getStances, applyStanceUpdates, formatStancesForLLM } from './lib/stances/store.mjs';
+import { getStances, applyStanceUpdates, formatStancesForLLM, setStance, VALID_STANCES } from './lib/stances/store.mjs';
 import { detectMaCrosses } from './lib/technicals/maCrossStore.mjs';
 import { harvestAndScore, annotateBoard } from './lib/discovery/discover.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
@@ -420,6 +420,19 @@ if (telegramAlerter.isConfigured) {
     return r.ok ? `💬 ${escapeMd(r.answer)}` : `⚠️ ${r.error}`;
   });
 
+  // /stance <TICKER> <TAG> [note] — DIRECT user override of a stance tag (applies immediately, no agent
+  // judgment). TAG = WATCH|ACCUMULATE|HOLD|TRIM|EXIT|AVOID|CLOSE. e.g. "/stance WMB EXIT thesis dead".
+  telegramAlerter.onCommand('/stance', async (args) => {
+    const parts = String(args || '').trim().split(/\s+/);
+    const ticker = (parts[0] || '').toUpperCase();
+    const tag    = (parts[1] || '').toUpperCase();
+    const note   = parts.slice(2).join(' ');
+    if (!ticker || !tag) return `Usage: \`/stance <TICKER> <TAG> [note]\`\nTAG = ${VALID_STANCES.join(' / ')} / CLOSE\ne.g. \`/stance WMB EXIT regulatory risk\``;
+    const r = setStance(ticker, tag, note ? { thesis: note } : {});
+    if (!r.ok) return `⚠️ ${r.error}`;
+    return r.closed ? `🗑 Closed ${ticker} stance.` : `✅ ${ticker} → *${r.stance.stance}*${note ? ` — ${escapeMd(note)}` : ''} (applied now).`;
+  });
+
   // Inline Accept/Deny buttons on proposal cards route here.
   telegramAlerter.onCallback(async (action, id, ctx) => {
     if (action === 'accept') return await acceptProposal(id, ctx);
@@ -679,6 +692,19 @@ app.get('/api/stances', (req, res) => {
   try { res.json(getStances()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Direct user override of a stance tag — applies immediately (no agent judgment, unlike /propose).
+// Body: { ticker, stance: WATCH|ACCUMULATE|HOLD|TRIM|EXIT|AVOID|CLOSE, thesis?, exit?, confidence? }
+app.post('/api/stance', express.json(), (req, res) => {
+  try {
+    const { ticker, stance, thesis, plan, exit, confidence } = req.body || {};
+    const r = setStance(ticker, stance, { thesis, plan, exit, confidence });
+    if (!r.ok) return res.status(400).json(r);
+    console.log(`[Stance] User set ${String(ticker).toUpperCase()} → ${r.closed ? 'CLOSED' : r.stance.stance}`);
+    res.json({ ...r, stances: getStances() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/stance-tags', (req, res) => res.json({ tags: VALID_STANCES }));
 
 // User proposes an edit to the living plan → agent accepts/denies/partially accepts.
 app.post('/api/propose-plan', express.json(), async (req, res) => {
