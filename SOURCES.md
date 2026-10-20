@@ -97,6 +97,8 @@ NOAA, EPA RadNet, Patents, Bluesky, KiwiSDR, CelesTrak (space), CISA-KEV, Hacker
 | `ANTICHURN_MIN_PROFIT_PCT` | 0.3 | Inside that window, a position can only be flipped early if up at least this % (winners scalp fast; losers hold to the stop). | 🧑 |
 | `ALLOW_EXTENDED_HOURS_ENTRY` | false | When false, a NEW_BUY only fires in the regular 9:30–16:00 ET session (pre/after-market = noise). Exits are never gated. | 🧑 |
 | `INTRADAY_ENTRY_CUTOFF` | 1500 | ET time (HHMM) after which a new INTRADAY buy is blocked — no runway to flip same-day, so it would carry overnight into gap risk. SWING/LONG unaffected. | 🧑 |
+| `INTRADAY_EOD_TIME` | 1545 | ET time (HHMM) the end-of-day INTRADAY handling kicks in. | 🧑 |
+| `INTRADAY_EOD_LOCK_PCT` | 0.005 | An INTRADAY position up ≥ this at EOD is auto-sold to bank the gain (down ones hold overnight). 0 = off. | 🧑 |
 | `DISCOVERY_MIN_SCORE` | 3 | Minimum composite score for a candidate to reach the MARKET_SETUPS board — filters single-signal noise. | 🧑 |
 
 ---
