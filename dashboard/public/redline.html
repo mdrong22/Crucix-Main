@@ -1400,12 +1400,13 @@ async function loadStances(){
     if(badge)badge.textContent=String(list.length);
     el.innerHTML=list.map(s=>{
       const conf=(s.confidence!=null)?('<span class="st-conf">'+s.confidence+'%</span>'):'';
+      const hz=s.horizon?('<span class="st-conf" title="Investment type" style="opacity:.75">'+esc(s.horizon)+'</span>'):'';
       const plan=s.plan?('<div class="st-plan"><b>entry:</b> '+esc(s.plan)+'</div>'):'';
       const exit=s.exit?('<div class="st-exit"><b>sell when:</b> '+esc(s.exit)+'</div>'):'';
       const tk=s.held?('<span class="held">★ '+esc(s.ticker)+'</span>'):esc(s.ticker);
       return '<div class="st-row" style="cursor:pointer" title="Ask Claude about this plan" onclick="askStance(\''+esc(s.ticker)+'\')">'+'<div class="st-tk">'+tk+'</div>'+
         '<div class="st-body"><div style="display:flex;align-items:center;gap:8px">'+
-        '<span class="st-badge sb-'+esc(s.stance)+'" title="Click to change tag" style="cursor:pointer" onclick="event.stopPropagation();openTagMenu(\''+esc(s.ticker)+'\',\''+esc(s.stance)+'\',event)">'+esc(s.stance)+' ✎</span>'+conf+'</div>'+
+        '<span class="st-badge sb-'+esc(s.stance)+'" title="Click to change tag" style="cursor:pointer" onclick="event.stopPropagation();openTagMenu(\''+esc(s.ticker)+'\',\''+esc(s.stance)+'\',event)">'+esc(s.stance)+' ✎</span>'+conf+hz+'</div>'+
         '<div class="st-thesis">'+esc(s.thesis||'')+'</div>'+plan+exit+'</div></div>';
     }).join('');
   }catch(e){}

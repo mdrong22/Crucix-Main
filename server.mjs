@@ -28,7 +28,7 @@ import { createProposal, getProposal, getPending, setStatus, attachMessageId, ex
 import { calculateRemainingDayTrades, isDayTrade } from './lib/llm/council/utils/compliance.mjs';
 import { DataCleaner } from './lib/llm/council/utils/cleaner.mjs';
 import { resolvePositions } from './lib/llm/council/utils/positionResolver.mjs';
-import { logDecisions, loadDecisions, getOpenDecisions } from './lib/llm/council/utils/decisionLogger.mjs';
+import { logDecisions, loadDecisions, getOpenDecisions, updateDecision } from './lib/llm/council/utils/decisionLogger.mjs';
 import { runReviewCouncil } from './lib/llm/council/reviewCouncil.mjs';
 import { startStopLossWatcher, derivedStopPrice } from './lib/alerts/stopLossWatcher.mjs';
 import { getSettings, updateSettings } from './lib/settings/store.mjs';
@@ -1276,6 +1276,30 @@ async function runProposalCycle(context) {
     } catch (err) { console.error('[STANCE] applyStanceUpdates failed:', err.message); }
   }
 
+  // RETYPE — the agent can promote a HELD position's investment type (INTRADAY→SWING→LONG) via a
+  // stanceUpdate's horizon. Apply it to the live decision so its hard stop + EOD behavior change to match
+  // (e.g. an INTRADAY winner promoted to SWING won't auto-sell at the close and gets the -5% floor + room
+  // to run). Only held positions, only within the user's allowed horizons.
+  try {
+    const heldSet = new Set((heldTickers || []).map(t => String(t).toUpperCase()));
+    const openBuys = (getOpenDecisions() || []).filter(d => String(d.action || '').toUpperCase() === 'BUY');
+    for (const u of (proposal?.stanceUpdates || [])) {
+      const tk = String(u?.ticker || '').toUpperCase();
+      const hz = String(u?.horizon || '').toUpperCase();
+      if (!['INTRADAY', 'SWING', 'LONG'].includes(hz) || !heldSet.has(tk)) continue;
+      if (!effectiveHorizons.includes(hz)) {
+        console.log(`[RETYPE] Skipped ${tk}→${hz} — not in allowed types [${effectiveHorizons.join(',')}].`);
+        continue;
+      }
+      const dec = openBuys.filter(d => d.ticker === tk)
+        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+      if (dec && dec.horizon !== hz) {
+        updateDecision(dec.id, { horizon: hz });
+        console.log(`[RETYPE] 🔁 ${tk}: ${dec.horizon} → ${hz} — stops + EOD behavior updated to the new type.`);
+      }
+    }
+  } catch (err) { console.error('[RETYPE] failed:', err.message); }
+
   if (!proposal || proposal.action === 'NO_ACTION') {
     console.log(`[PROPOSAL] No proposal this cycle${proposal?.desc ? ` — ${proposal.desc}` : ''}.`);
     setCycle('NO_ACTION', (proposal?.desc || 'No trade worth proposing this cycle').slice(0, 140));
@@ -1511,6 +1535,7 @@ async function acceptProposal(id, ctx) {
       thesis:     (p.desc || p.title || '').slice(0, 240),
       plan:       isBuy ? `Entered ${trade.units ?? ''} @ ~$${entered ?? '?'} (${p.horizon || 'SWING'}, ${ctx?.auto ? 'auto' : 'accepted'})`.trim() : `Sold ${trade.units ?? ''}`.trim(),
       exit:       stopTxt,
+      horizon:    isBuy ? (p.horizon || 'SWING') : undefined,   // stamp the position's investment type
       confidence: Number.isFinite(Number(p.confidence)) ? Math.round(Number(p.confidence)) : null,
       close:      fullExit,   // full exit → delete the stance entirely
     }], [...heldNow]);
