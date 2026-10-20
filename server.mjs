@@ -1276,29 +1276,8 @@ async function runProposalCycle(context) {
     } catch (err) { console.error('[STANCE] applyStanceUpdates failed:', err.message); }
   }
 
-  // RETYPE — the agent can promote a HELD position's investment type (INTRADAY→SWING→LONG) via a
-  // stanceUpdate's horizon. Apply it to the live decision so its hard stop + EOD behavior change to match
-  // (e.g. an INTRADAY winner promoted to SWING won't auto-sell at the close and gets the -5% floor + room
-  // to run). Only held positions, only within the user's allowed horizons.
-  try {
-    const heldSet = new Set((heldTickers || []).map(t => String(t).toUpperCase()));
-    const openBuys = (getOpenDecisions() || []).filter(d => String(d.action || '').toUpperCase() === 'BUY');
-    for (const u of (proposal?.stanceUpdates || [])) {
-      const tk = String(u?.ticker || '').toUpperCase();
-      const hz = String(u?.horizon || '').toUpperCase();
-      if (!['INTRADAY', 'SWING', 'LONG'].includes(hz) || !heldSet.has(tk)) continue;
-      if (!effectiveHorizons.includes(hz)) {
-        console.log(`[RETYPE] Skipped ${tk}→${hz} — not in allowed types [${effectiveHorizons.join(',')}].`);
-        continue;
-      }
-      const dec = openBuys.filter(d => d.ticker === tk)
-        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
-      if (dec && dec.horizon !== hz) {
-        updateDecision(dec.id, { horizon: hz });
-        console.log(`[RETYPE] 🔁 ${tk}: ${dec.horizon} → ${hz} — stops + EOD behavior updated to the new type.`);
-      }
-    }
-  } catch (err) { console.error('[RETYPE] failed:', err.message); }
+  // RETYPE held positions whose stanceUpdate changed the horizon (gated to the user's allowed types).
+  applyHorizonRetypes(proposal?.stanceUpdates, heldTickers, effectiveHorizons);
 
   if (!proposal || proposal.action === 'NO_ACTION') {
     console.log(`[PROPOSAL] No proposal this cycle${proposal?.desc ? ` — ${proposal.desc}` : ''}.`);
@@ -1651,6 +1630,35 @@ async function buildPlanGrounding() {
   ].filter(Boolean).join('\n');
 }
 
+// Retype held positions whose stanceUpdate carries a new horizon (INTRADAY/SWING/LONG) — update the live
+// decision so its hard-stop floor + EOD behavior change to match. Shared by the sweep (gated to the user's
+// allowed horizons) and /propose (allowedHorizons = null → the user's explicit choice isn't gated).
+// @param {Array} stanceUpdates  @param {string[]} heldTickers  @param {string[]|null} allowedHorizons
+function applyHorizonRetypes(stanceUpdates, heldTickers, allowedHorizons = null) {
+  try {
+    const heldSet  = new Set((heldTickers || []).map(t => String(t).toUpperCase()).filter(Boolean));
+    const openBuys = (getOpenDecisions() || []).filter(d => String(d.action || '').toUpperCase() === 'BUY');
+    let n = 0;
+    for (const u of (stanceUpdates || [])) {
+      const tk = String(u?.ticker || '').toUpperCase();
+      const hz = String(u?.horizon || '').toUpperCase();
+      if (!['INTRADAY', 'SWING', 'LONG'].includes(hz) || !heldSet.has(tk)) continue;
+      if (allowedHorizons && !allowedHorizons.includes(hz)) {
+        console.log(`[RETYPE] Skipped ${tk}→${hz} — not in allowed types [${allowedHorizons.join(',')}].`);
+        continue;
+      }
+      const dec = openBuys.filter(d => d.ticker === tk)
+        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+      if (dec && dec.horizon !== hz) {
+        updateDecision(dec.id, { horizon: hz });
+        console.log(`[RETYPE] 🔁 ${tk}: ${dec.horizon} → ${hz} — stops + EOD behavior updated to the new type.`);
+        n++;
+      }
+    }
+    return n;
+  } catch (err) { console.error('[RETYPE] failed:', err.message); return 0; }
+}
+
 // ── User plan proposal — evaluate a user's proposed edit to the living plan. ────
 // Shared by the dashboard modal (/api/propose-plan) and the Telegram /propose command.
 // On ACCEPT/PARTIAL, the stance updates are applied to the book (held flags preserved) and
@@ -1673,6 +1681,9 @@ async function handlePlanProposal(query) {
         const held = getStances().filter(s => s.held).map(s => s.ticker);
         applyStanceUpdates(result.stanceUpdates, held);
         applied = result.stanceUpdates.length;
+        // Retype the live position if the user's proposal changed a held stock's horizon. allowedHorizons
+        // = null: a /propose is the user's explicit choice, so it isn't gated by the auto-buy type setting.
+        applyHorizonRetypes(result.stanceUpdates, held, null);
       } catch (err) { console.error('[PlanProposal] applyStanceUpdates failed:', err.message); }
     }
     if (result.directive) {
