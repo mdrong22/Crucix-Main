@@ -71,6 +71,9 @@ const ANTICHURN_MIN_PROFIT_PCT = parseFloat(process.env.ANTICHURN_MIN_PROFIT_PCT
 // and only candidates with real conviction (composite discovery score ≥ min) reach the agent's board.
 const ALLOW_EXTENDED_HOURS_ENTRY = /^(1|true|yes)$/i.test(process.env.ALLOW_EXTENDED_HOURS_ENTRY ?? '');
 const DISCOVERY_MIN_SCORE        = parseFloat(process.env.DISCOVERY_MIN_SCORE ?? '3');
+// A fresh INTRADAY buy needs runway to actually flip same-day. After this ET time (HHMM) there isn't
+// enough session left, so a new INTRADAY entry would just carry overnight into gap risk (the MANE case).
+const INTRADAY_ENTRY_CUTOFF      = parseInt(process.env.INTRADAY_ENTRY_CUTOFF ?? '1500', 10); // 3:00 PM ET
 let lastGeopoliticalSummary = null; // Latest geopolitical LLM summary from alert evaluator → passed to Scout
 let lastIdeasRunAt = null; // Timestamp of last successful Ideas LLM generation
 let lastThesisRunAt = null; // Timestamp of last successful forward-pacing Thesis generation
@@ -154,6 +157,11 @@ function isRegularSession() {
   if (et.getDay() === 0 || et.getDay() === 6) return false;
   const h = et.getHours() + et.getMinutes() / 60;
   return h >= 9.5 && h < 16.0;                          // 9:30 AM – 4:00 PM ET
+}
+// Current ET time as HHMM (e.g. 1524 = 3:24 PM) — for the late-session INTRADAY entry cutoff.
+function etHHMM() {
+  const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  return et.getHours() * 100 + et.getMinutes();
 }
 
 // Reads the most recent logged decision from decisions.json.
@@ -1287,6 +1295,15 @@ async function runProposalCycle(context) {
   if (proposal.action === 'NEW_BUY' && !ALLOW_EXTENDED_HOURS_ENTRY && !isRegularSession()) {
     console.log(`[PROPOSAL] ⛔ New-buy blocked — ${proposal.ticker}: outside regular session (pre/after-market noise). Set ALLOW_EXTENDED_HOURS_ENTRY to permit.`);
     setCycle('NO_ACTION', `${proposal.ticker} buy held — outside regular hours (noise guard)`);
+    return;
+  }
+
+  // 4a0b. Late-session INTRADAY cutoff — a fresh INTRADAY buy opened too late (e.g. 3:24 PM) can't flip
+  //       same-day, so it carries overnight into gap risk (the MANE loss). Block new INTRADAY entries past
+  //       the cutoff. Does NOT close anything — exits/holds are untouched. SWING/LONG entries are unaffected.
+  if (proposal.action === 'NEW_BUY' && String(proposal.horizon).toUpperCase() === 'INTRADAY' && etHHMM() >= INTRADAY_ENTRY_CUTOFF) {
+    console.log(`[PROPOSAL] ⛔ INTRADAY buy blocked — ${proposal.ticker}: ${etHHMM()} ET past cutoff ${INTRADAY_ENTRY_CUTOFF} — no runway to flip same-day (would carry overnight).`);
+    setCycle('NO_ACTION', `${proposal.ticker} intraday buy held — too late in session (no same-day runway)`);
     return;
   }
 
