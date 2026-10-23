@@ -99,6 +99,7 @@ NOAA, EPA RadNet, Patents, Bluesky, KiwiSDR, CelesTrak (space), CISA-KEV, Hacker
 | `INTRADAY_ENTRY_CUTOFF` | 1500 | ET time (HHMM) after which a new INTRADAY buy is blocked — no runway to flip same-day, so it would carry overnight into gap risk. SWING/LONG unaffected. | 🧑 |
 | `INTRADAY_EOD_TIME` | 1545 | ET time (HHMM) the end-of-day INTRADAY handling kicks in. | 🧑 |
 | `INTRADAY_EOD_LOCK_PCT` | 0.005 | An INTRADAY position up ≥ this at EOD is auto-sold to bank the gain (down ones hold overnight). 0 = off. | 🧑 |
+| `MORATORIUM_HOURS` | 48 | After a hard-stop, the ticker is on a re-entry cooldown this long (the failure is logged + fed to the agent). 0 = off. | 🧑 |
 | `DISCOVERY_MIN_SCORE` | 3 | Minimum composite score for a candidate to reach the MARKET_SETUPS board — filters single-signal noise. | 🧑 |
 
 ---

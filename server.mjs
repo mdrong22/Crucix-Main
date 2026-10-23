@@ -35,6 +35,7 @@ import { getSettings, updateSettings } from './lib/settings/store.mjs';
 import { getStances, applyStanceUpdates, formatStancesForLLM, setStance, VALID_STANCES } from './lib/stances/store.mjs';
 import { detectMaCrosses } from './lib/technicals/maCrossStore.mjs';
 import { harvestAndScore, annotateBoard } from './lib/discovery/discover.mjs';
+import { isUnderMoratorium, getMoratorium, getActiveMoratoriums, formatMoratoriumsForLLM, clearMoratorium } from './lib/risk/moratorium.mjs';
 import { generateTradeReport } from './lib/reports/tradeReport.mjs';
 import { evaluatePlanProposal, answerPlanQuestion } from './lib/llm/planProposal.mjs';
 import { answerNewsQuestion } from './lib/llm/newsAsk.mjs';
@@ -441,6 +442,18 @@ if (telegramAlerter.isConfigured) {
     return r.closed ? `🗑 Closed ${ticker} stance.` : `✅ ${ticker} → *${r.stance.stance}*${note ? ` — ${escapeMd(note)}` : ''} (applied now).`;
   });
 
+  // /cooldowns — list active post-stop moratoriums (the failure log). /lift <TICKER> clears one early.
+  telegramAlerter.onCommand('/cooldowns', async () => {
+    const list = getActiveMoratoriums();
+    if (!list.length) return '✅ No active cooldowns — nothing is on a post-stop moratorium.';
+    return `🚫 *POST-STOP COOLDOWNS*\n${list.map(m => `• *${m.ticker}*${m.pnlPct != null ? ` (${m.pnlPct >= 0 ? '+' : ''}${m.pnlPct.toFixed(1)}%)` : ''} — until ${m.until.slice(5, 16).replace('T', ' ')}\n  _${escapeMd(m.reason)}_`).join('\n')}\n\n_Lift one with /lift <TICKER>._`;
+  });
+  telegramAlerter.onCommand('/lift', async (args) => {
+    const t = String(args || '').trim().toUpperCase();
+    if (!t) return 'Usage: `/lift <TICKER>` — clears a post-stop cooldown so new buys are allowed again.';
+    return clearMoratorium(t) ? `✅ Lifted the cooldown on *${t}* — it can be bought again.` : `No active cooldown on ${t}.`;
+  });
+
   // Inline Accept/Deny buttons on proposal cards route here.
   telegramAlerter.onCallback(async (action, id, ctx) => {
     if (action === 'accept') return await acceptProposal(id, ctx);
@@ -714,6 +727,20 @@ app.post('/api/stance', express.json(), (req, res) => {
 });
 app.get('/api/stance-tags', (req, res) => res.json({ tags: VALID_STANCES }));
 
+// Post-stop moratoriums — the failure log + active cooldowns (names recently stopped out).
+app.get('/api/moratoriums', (req, res) => {
+  try { res.json(getActiveMoratoriums()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/moratorium/lift', express.json(), (req, res) => {
+  try {
+    const t = String(req.body?.ticker || '').toUpperCase();
+    const ok = clearMoratorium(t);
+    if (ok) console.log(`[Moratorium] User lifted cooldown on ${t}.`);
+    res.json({ ok, ticker: t, moratoriums: getActiveMoratoriums() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // User proposes an edit to the living plan → agent accepts/denies/partially accepts.
 app.post('/api/propose-plan', express.json(), async (req, res) => {
   try {
@@ -859,7 +886,9 @@ async function runSweepCycle() {
       // (congress/insider buys, upgrades, option sweeps, 8-Ks, movers, theses, prior ideas), excluding
       // names you already hold. The top-scored candidates get enriched (news + chart) alongside holdings,
       // then ranked into a MARKET_SETUPS board the agent picks NEW_BUYs from.
-      const scored = harvestAndScore(synthesized, { exclude: new Set(heldSyms), ideas: lastGoodIdeas });
+      // Exclude held names AND anything under a post-stop moratorium (don't surface a just-stopped name).
+      const discExclude = new Set([...heldSyms, ...getActiveMoratoriums().map(m => m.ticker)]);
+      const scored = harvestAndScore(synthesized, { exclude: discExclude, ideas: lastGoodIdeas });
       const candidateSyms = scored.slice(0, 12).map(c => c.ticker);
       const monitored = [...new Set([...heldSyms, ...stanceSyms, ...candidateSyms].filter(valid))];
       const intel = await fetchPositionIntel(monitored);
@@ -1264,7 +1293,7 @@ async function runProposalCycle(context) {
     { buysLeft, buysToday, dailyCap, minBuyingPower: minBP, bpBelowFloor,
       strategyPrompt: activeMode.prompt, strategyLabel: activeMode.label, strategyAuto: activeMode.auto,
       breakerTripped: breaker.tripped, breakerReason: breaker.reasons.join('; ') },
-    formatStancesForLLM(), buildTrackRecord(), formatDirectivesForLLM()
+    formatStancesForLLM(), buildTrackRecord(), formatDirectivesForLLM(), formatMoratoriumsForLLM()
   );
 
   // Persist the agent's living plan (stance book) EVERY cycle — even on NO_ACTION, the revised
@@ -1307,6 +1336,15 @@ async function runProposalCycle(context) {
   if (proposal.action === 'NEW_BUY' && String(proposal.horizon).toUpperCase() === 'INTRADAY' && etHHMM() >= INTRADAY_ENTRY_CUTOFF) {
     console.log(`[PROPOSAL] ⛔ INTRADAY buy blocked — ${proposal.ticker}: ${etHHMM()} ET past cutoff ${INTRADAY_ENTRY_CUTOFF} — no runway to flip same-day (would carry overnight).`);
     setCycle('NO_ACTION', `${proposal.ticker} intraday buy held — too late in session (no same-day runway)`);
+    return;
+  }
+
+  // 4a0c. Post-stop MORATORIUM — a name that just stopped you out is on cooldown; don't re-buy into the
+  //        falling knife. The cooldown + logged failure also feed the agent's context (below).
+  if (proposal.action === 'NEW_BUY' && isUnderMoratorium(proposal.ticker)) {
+    const mor = getMoratorium(proposal.ticker);
+    console.log(`[PROPOSAL] ⛔ ${proposal.ticker} under post-stop moratorium until ${mor?.until} — new buy blocked.`);
+    setCycle('NO_ACTION', `${proposal.ticker} buy blocked — recently stopped out (moratorium)`);
     return;
   }
 
