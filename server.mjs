@@ -1401,11 +1401,15 @@ async function runProposalCycle(context) {
   // 5a. AUTO-TRADE ON → execute immediately, no Accept/Deny (hard stop-losses still apply).
   if (settings.autoTrade) {
     console.log(`[PROPOSAL] 🤖 Auto-Trade ON — executing ${rec.action} ${rec.ticker} without approval.`);
-    await telegramAlerter.sendMessage(
-      `🤖 *AUTO-TRADE (no approval)*\n${formatProposalCard(rec)}`,
+    // Announce as IN PROGRESS and capture the message id, so acceptProposal edits THIS card to the real
+    // outcome (✅ EXECUTED / ❌ FAILED). Previously the card was sent without an id, so a failed auto-trade
+    // left a success-looking "placed" message with no failure follow-up (the AR 400 case).
+    const sent = await telegramAlerter.sendMessage(
+      `🤖 *AUTO-TRADE — placing ${rec.action} ${rec.ticker}…*\n${formatProposalCard(rec)}`,
       { chatId: telegramAlerter.proposalsChatId }
     );
-    setCycle('AUTO_EXECUTED', `${rec.action} ${rec.ticker} — auto-traded (no approval)`, { ticker: rec.ticker });
+    if (sent?.messageId) attachMessageId(rec.id, sent.messageId);
+    setCycle('DECIDING', `Auto-trading ${rec.action} ${rec.ticker}…`, { ticker: rec.ticker });
     await acceptProposal(rec.id, { chatId: telegramAlerter.proposalsChatId, auto: true });
     return;
   }
@@ -1491,6 +1495,18 @@ async function acceptProposal(id, ctx) {
     return 'Blocked: PDT';
   }
 
+  // A BUY MUST carry a size — no units AND no notional_value → SnapTrade 400 ("specify units or notional").
+  // Don't fire a broken order (the AR case); fail clearly before sending.
+  if (trade.action === 'BUY' && !(Number(trade.units) > 0) && !(Number(trade.notional_value) > 0)) {
+    setStatus(id, 'FAILED', { error: 'no-size' });
+    console.warn(`[PROPOSAL] ✖ ${trade.symbol} BUY has no units/notional — not placing (invalid size).`);
+    await telegramAlerter.editMessageText(p.telegramMessageId,
+      `❌ *${p.title}* — NOT PLACED\n${trade.symbol} buy had no size (units/notional). Rejected before sending — no order was placed.`,
+      { chatId: ctx?.chatId });
+    setCycle('NO_ACTION', `${trade.symbol} buy not placed — missing size`);
+    return 'No size';
+  }
+
   setStatus(id, 'ACCEPTED');
   console.log(`[PROPOSAL] ✅ Accepted — placing ${trade.action} ${trade.symbol}`);
   // A SELL that covers the whole position (or specifies no size) is a FULL EXIT → sell the exact
@@ -1514,8 +1530,9 @@ async function acceptProposal(id, ctx) {
   }
   if (!orderRes) {
     setStatus(id, 'FAILED', { error: 'order-rejected' });
+    setCycle('NO_ACTION', `${trade.action} ${trade.symbol} — order rejected by broker`);
     await telegramAlerter.editMessageText(p.telegramMessageId,
-      `❌ *${p.title}* — ORDER FAILED\nSnapTrade rejected ${trade.action} ${trade.symbol}.`,
+      `❌ *${p.title}* — ORDER FAILED\nSnapTrade rejected ${trade.action} ${trade.symbol} (no order placed, nothing logged).`,
       { chatId: ctx?.chatId });
     return 'Order failed';
   }
