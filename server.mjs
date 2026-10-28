@@ -890,7 +890,11 @@ async function runSweepCycle() {
       const discExclude = new Set([...heldSyms, ...getActiveMoratoriums().map(m => m.ticker)]);
       const scored = harvestAndScore(synthesized, { exclude: discExclude, ideas: lastGoodIdeas });
       const candidateSyms = scored.slice(0, 12).map(c => c.ticker);
-      const monitored = [...new Set([...heldSyms, ...stanceSyms, ...candidateSyms].filter(valid))];
+      // Always pull news for the biggest movers too — a large one-day move usually has a catalyst
+      // (ORCL +12% on FCF guidance), and the agent needs that news to judge re-rating vs chase.
+      const bigMovers = (synthesized.movers?.gainers || []).filter(m => Math.abs(m.changePct || 0) >= 6)
+        .slice(0, 5).map(m => up(m.ticker)).filter(valid);
+      const monitored = [...new Set([...heldSyms, ...stanceSyms, ...candidateSyms, ...bigMovers].filter(valid))];
       const intel = await fetchPositionIntel(monitored);
       synthesized.positionNews  = intel.news;
       synthesized.insiderSells  = intel.insiderSells;
