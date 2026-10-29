@@ -763,6 +763,15 @@ app.post('/api/ask-plan', express.json(), async (req, res) => {
 
 
 // List all reports (.html and .md for inline viewing; .docx listed for download)
+// Serve the standalone system guide (project-root REDLINE.html) so the dashboard DOCS section can open it.
+// NOTE: path is deliberately NOT "/redline.html" — express routing is case-insensitive by default, so that
+// would collide with the dashboard's own /redline.html and serve the guide in its place.
+app.get('/docs/redline.html', (req, res) => {
+  const p = join(process.cwd(), 'REDLINE.html');
+  if (!existsSync(p)) return res.status(404).send('System guide not found.');
+  res.sendFile(p);
+});
+
 app.get('/api/reports', (req, res) => {
   try {
     const dir = join(process.cwd(), 'reports');

@@ -842,16 +842,21 @@ function renderList(){
 
   list.innerHTML=_filteredReports.map((r,i)=>{
     if(r.type==='doc'){
-      return `<a class="report-row" href="/api/reports/download/${encodeURIComponent(r.name)}" download>
+      const ext=r.url?' target="_blank" rel="noopener"':' download';
+      const href=r.url?r.url:`/api/reports/download/${encodeURIComponent(r.name)}`;
+      const meta=r.url?'HTML':'DOCX';
+      const arrow=r.url?'↗':'⬇';
+      const del=r.pinned?'':`<button class="report-del" onclick="deleteReport('${r.name.replace(/'/g,"\\'")}',event)" title="Delete">✕</button>`;
+      return `<a class="report-row" href="${href}"${ext}>
         <div class="report-row-left">
-          <div class="report-label lbl-doc">DOCUMENT</div>
+          <div class="report-label lbl-doc">${r.pinned?'SYSTEM GUIDE':'DOCUMENT'}</div>
           <div class="report-name">${r.displayName||r.name}</div>
           ${r.displayDate?`<div class="report-date">${r.displayDate}</div>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-          <button class="report-del" onclick="deleteReport('${r.name.replace(/'/g,"\\'")}',event)" title="Delete">✕</button>
-          <div class="report-meta">DOCX</div>
-          <div class="report-arrow">⬇</div>
+          ${del}
+          <div class="report-meta">${meta}</div>
+          <div class="report-arrow">${arrow}</div>
         </div>
       </a>`;
     }
@@ -877,6 +882,9 @@ async function loadReports(){
     const d=await res.json();
     const allNames=d.reports||[];
     _allReports=allNames.map(n=>parseReport(n,allNames)).filter(Boolean);
+    // Pin the RedLine system guide to the top of the DOCS section (opens the standalone HTML in a new tab).
+    _allReports.unshift({ name:'__system_guide__', type:'doc', url:'/docs/redline.html', ext:'html', pinned:true,
+      displayName:'RedLine — System Guide', displayDate:'Full system docs · opens in a new tab' });
     applyFilter(_currentFilter);
   }catch(e){
     document.getElementById('reportList').innerHTML='<div class="report-empty">COULD NOT LOAD REPORTS</div>';
