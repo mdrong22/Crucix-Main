@@ -266,21 +266,91 @@ knows when a signal is dark.
 
 ---
 
-## 10. File map (where to look)
+## 10. Discovery & per-position intelligence
+
+Two capabilities sit on top of the base pipeline: **finding new names**, and **watching the ones you
+already hold** with company-level depth. Both run inside the sweep and feed the agent digest.
+
+**Per-name intelligence** — each sweep, every name you **hold**, have a **stance** on, or that ranks as a
+**discovery candidate** gets pulled individually (not just as a macro headline):
+
+| Digest line | What it is | Source |
+|---|---|---|
+| `POSITION_NEWS` | company-specific headlines (court rulings, guidance, downgrades…) | Finnhub `/company-news` |
+| `INSIDER_SELLS` | execs/directors reducing a holding (bearish) | Finnhub insider txns |
+| `INSTITUTIONAL_SELLS` | 13F funds cutting stakes (quarterly, cached) | Finnhub institutional-ownership |
+| `POSITION_TECHNICALS` | price vs 50/200-day MA, RSI, RS vs SPY, trend | Alpaca bars |
+| `MA_CROSS` | a FRESH cross this sweep (price ±MA, death/golden), hysteresis-debounced | `lib/technicals/maCrossStore.mjs` |
+
+**Discovery board (`MARKET_SETUPS`)** — `lib/discovery/discover.mjs` harvests every ticker the sweep's
+signals already name (congress/insider buys, upgrades, option sweeps, 8-Ks, movers scaled by magnitude,
+thesis targets, prior ideas), scores each by catalyst strength, enriches the top ones with the news +
+chart above, and ranks a shortlist. A **min-conviction floor** (`DISCOVERY_MIN_SCORE`) drops single-signal
+noise; **counter-trend** (<200-MA) and **insider/13F-selling** names are down-weighted. The agent's
+NEW_BUY step hunts here first.
+
+**Post-stop moratorium** (`lib/risk/moratorium.mjs`) — a hard-stop puts the ticker on a re-entry cooldown
+and logs the failed thesis, so the system doesn't immediately re-buy a name that just stopped it out, and
+the failure informs later decisions (`/cooldowns`, `/lift`).
+
+**Position lifecycle controls**
+- **Investment-type retype** — the agent (or you, via `/propose`) can promote a held position
+  INTRADAY→SWING→LONG when a winner has more room; the live stop floor + EOD behavior change to match.
+- **Intraday EOD lifecycle** — a late-session INTRADAY entry is blocked (`INTRADAY_ENTRY_CUTOFF`, no
+  same-day runway); at the close an INTRADAY **winner** is profit-locked and a **loser** holds overnight.
+- **Anti-whipsaw** — MA-cross hysteresis + an anti-churn hold guard (a just-entered loser isn't soft-exited
+  on a reversed signal; winners still scalp fast; the hard stop always covers the downside).
+- **Direct stance control** — set any tag now (`/stance <TICKER> <HOLD|WATCH|EXIT|…>` or the dashboard ✎),
+  independent of the agent.
+- **Every exit writes a report** — agent sells, hard stops, trailing/EOD profit-locks — each with the
+  realized result (entry → exit, up/down, WIN/LOSS verdict).
+
+---
+
+## 11. Worked example — how a new name is discovered (ORCL +12%)
+
+A name you don't hold enters the system **only through the movers screener** — then travels to the agent:
+
+1. **Front door — movers.** `apis/sources/movers.mjs` (Yahoo gainers screener) ranks ORCL at +12% →
+   `synthesized.movers.gainers`. (Digest: `MARKET_GAINERS: ORCL +12%`.)
+2. **Scored.** `harvestAndScore()` scores the gainer **by magnitude** — ≥10% → **3** (a small wiggle would
+   be 1 and get filtered as noise; this is how a real catalyst mover clears the board but RIG-style churn
+   doesn't).
+3. **Monitored.** ORCL joins the enrichment set both as a top candidate and as a **big mover (≥6%)**.
+4. **Enriched — the "why".** `POSITION_NEWS` pulls *"Oracle surges on FY2029 $30B free-cash-flow
+   guidance"* (the catalyst); `POSITION_TECHNICALS` shows it above both MAs, strong RS.
+5. **Board.** `annotateBoard()` → score 3 + setup + news ≈ **4** ≥ `DISCOVERY_MIN_SCORE` → it lands on
+   `MARKET_SETUPS` with its headline attached.
+6. **Agent sees it.** `buildAnalystContext` leads the NEW_BUY hunt from `MARKET_SETUPS`; ORCL is right in
+   front of the agent, with the guidance catalyst and chart, to judge **re-rating vs. chase**.
+7. **If it buys** → the normal gates (regular-hours · intraday cutoff · moratorium · size) → execute →
+   stance `HOLD` + horizon → hard stop → trade report.
+
+**The boundary:** this is **price-move triggered** — ORCL's news is pulled *because* the move was big
+enough to rank in movers. If it had re-rated on the same news with only a +3% candle (and you didn't hold
+it), it would still be filtered. A news-first "guidance/earnings-surprise" signal is the next upgrade to
+catch catalysts *before* the big move.
+
+---
+
+## 12. File map (where to look)
 
 | Area | File |
 |---|---|
 | Sweep orchestrator | `apis/briefing.mjs` |
-| Data sources | `apis/sources/*.mjs` (congress = Bargo) |
+| Data sources | `apis/sources/*.mjs` (congress = Bargo, movers = Yahoo) |
 | Synthesis | `dashboard/inject.mjs` |
 | Ideas / theses / digest | `lib/llm/ideas.mjs`, `lib/llm/thesis.mjs` |
 | **The agent** | `lib/llm/analyst.mjs` |
-| Stance book | `lib/stances/store.mjs` |
+| **Discovery board** | `lib/discovery/discover.mjs` |
+| Per-position MA-cross | `lib/technicals/maCrossStore.mjs` |
+| Stance book + tags/horizon | `lib/stances/store.mjs` |
 | Track record / calibration | `lib/llm/trackRecord.mjs`, `lib/llm/calibration.mjs` |
-| Risk | `lib/risk/circuitBreaker.mjs`, `lib/alerts/stopLossWatcher.mjs` |
+| Risk | `lib/risk/circuitBreaker.mjs`, `lib/risk/moratorium.mjs`, `lib/alerts/stopLossWatcher.mjs` |
 | Proposals / execution | `lib/proposals/store.mjs`, `server.mjs` (`acceptProposal`) |
 | Brokerage | `lib/alerts/snaptrade.mjs` |
-| Plan proposals | `lib/llm/planProposal.mjs`, `lib/directives/store.mjs` |
+| Plan proposals / Ask | `lib/llm/planProposal.mjs`, `lib/llm/newsAsk.mjs`, `lib/directives/store.mjs` |
+| Strategy modes | `lib/llm/modes.mjs` |
 | Alerts / commands | `lib/alerts/telegram.mjs` |
 | Dashboard | `dashboard/public/redline.html` |
 | Settings | `lib/settings/store.mjs` |
