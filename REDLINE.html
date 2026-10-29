@@ -18,76 +18,55 @@
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{margin:0;background:
-      radial-gradient(1200px 600px at 80% -10%, rgba(255,42,77,0.08), transparent 60%),
-      var(--bg);
-    color:var(--text);font-family:var(--raj);font-size:16.5px;line-height:1.7;
-    -webkit-font-smoothing:antialiased}
-  .wrap{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
-
-  /* ── Sidebar / TOC ── */
+      radial-gradient(1200px 600px at 80% -10%, rgba(255,42,77,0.08), transparent 60%), var(--bg);
+    color:var(--text);font-family:var(--raj);font-size:16.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{display:grid;grid-template-columns:262px minmax(0,1fr);gap:0;max-width:1200px;margin:0 auto}
   nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
-    padding:26px 18px 40px;border-right:1px solid var(--line);background:rgba(8,3,6,0.6)}
+    padding:26px 16px 40px;border-right:1px solid var(--line);background:rgba(8,3,6,0.6)}
   nav.toc .brand{font-family:var(--orb);font-weight:800;font-size:15px;letter-spacing:0.14em;
     color:var(--red);text-shadow:0 0 18px var(--red-glow);margin-bottom:2px}
-  nav.toc .brand small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:0.22em;
-    color:var(--faint);margin-top:6px;text-shadow:none}
-  nav.toc ol{list-style:none;margin:22px 0 0;padding:0;counter-reset:s}
-  nav.toc a{display:block;text-decoration:none;color:var(--dim);font-size:13.5px;font-weight:500;
-    padding:6px 10px;border-radius:6px;border-left:2px solid transparent;transition:.15s}
+  nav.toc .brand small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:0.22em;color:var(--faint);margin-top:6px;text-shadow:none}
+  nav.toc ol{list-style:none;margin:20px 0 0;padding:0;counter-reset:s}
+  nav.toc a{display:block;text-decoration:none;color:var(--dim);font-size:13px;font-weight:500;
+    padding:5px 9px;border-radius:6px;border-left:2px solid transparent;transition:.15s;line-height:1.35}
   nav.toc a:hover{color:var(--text);background:var(--red-dim);border-left-color:var(--line2)}
   nav.toc a.active{color:var(--red-soft);border-left-color:var(--red);background:var(--red-dim)}
-  nav.toc a::before{counter-increment:s;content:counter(s);font-family:var(--mono);font-size:10px;
-    color:var(--faint);margin-right:9px}
-
-  /* ── Content ── */
+  nav.toc a::before{counter-increment:s;content:counter(s);font-family:var(--mono);font-size:10px;color:var(--faint);margin-right:8px}
   main{padding:0 46px 90px;min-width:0}
-  header.cover{padding:64px 0 30px;border-bottom:1px solid var(--line);margin-bottom:10px;position:relative}
-  header.cover::before{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
-    background:linear-gradient(90deg,var(--red),transparent 70%)}
-  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:0.32em;color:var(--red);
-    text-transform:uppercase;margin-bottom:14px}
-  h1{font-family:var(--orb);font-weight:800;font-size:40px;line-height:1.08;margin:0 0 18px;
-    letter-spacing:0.01em;background:linear-gradient(180deg,#fff,#ffb9c4 85%);-webkit-background-clip:text;
-    background-clip:text;color:transparent}
-  .lede{color:var(--dim);max-width:62ch;font-size:16px;border-left:2px solid var(--red);
-    padding:4px 0 4px 16px;margin:0}
-  h2{font-family:var(--orb);font-weight:600;font-size:22px;letter-spacing:0.02em;color:#fff;
-    margin:56px 0 4px;padding-top:20px;scroll-margin-top:16px}
-  h2 .n{font-family:var(--mono);font-size:14px;color:var(--red);margin-right:12px;font-weight:500}
-  h2+.rule{height:1px;background:linear-gradient(90deg,var(--line2),transparent 55%);margin:12px 0 20px}
-  h3{font-family:var(--raj);font-weight:700;font-size:17px;color:var(--red-soft);
-    letter-spacing:0.04em;text-transform:uppercase;margin:30px 0 8px}
+  header.cover{padding:60px 0 28px;border-bottom:1px solid var(--line);margin-bottom:10px;position:relative}
+  header.cover::before{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,var(--red),transparent 70%)}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:0.32em;color:var(--red);text-transform:uppercase;margin-bottom:14px}
+  h1{font-family:var(--orb);font-weight:800;font-size:38px;line-height:1.08;margin:0 0 18px;letter-spacing:0.01em;
+    background:linear-gradient(180deg,#fff,#ffb9c4 85%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{color:var(--dim);max-width:64ch;font-size:16px;border-left:2px solid var(--red);padding:4px 0 4px 16px;margin:0}
+  h2{font-family:var(--orb);font-weight:600;font-size:21px;letter-spacing:0.02em;color:#fff;margin:54px 0 4px;padding-top:20px;scroll-margin-top:16px}
+  h2 .n{font-family:var(--mono);font-size:13px;color:var(--red);margin-right:12px;font-weight:500}
+  h2+.rule{height:1px;background:linear-gradient(90deg,var(--line2),transparent 55%);margin:12px 0 18px}
+  h3{font-family:var(--raj);font-weight:700;font-size:16px;color:var(--red-soft);letter-spacing:0.04em;text-transform:uppercase;margin:26px 0 8px}
   p{margin:0 0 14px}
   a{color:var(--red-soft)}
   strong{color:#fff;font-weight:700}
   ul,ol{margin:0 0 16px;padding-left:22px}
-  li{margin-bottom:8px}
+  li{margin-bottom:7px}
   li::marker{color:var(--red)}
-  code{font-family:var(--mono);font-size:0.85em;background:var(--panel2);color:#ffc4cd;
-    padding:1.5px 6px;border-radius:4px;border:1px solid var(--line)}
-  pre{background:#0a0407;border:1px solid var(--line);border-left:3px solid var(--red);
-    border-radius:8px;padding:16px 18px;overflow-x:auto;margin:0 0 20px}
-  pre code{background:none;border:none;padding:0;color:#cbb9bf;font-size:12.5px;line-height:1.55}
-  blockquote{margin:0 0 20px;padding:14px 18px;background:var(--red-dim);border:1px solid var(--line);
-    border-left:3px solid var(--red);border-radius:8px;color:var(--text)}
+  code{font-family:var(--mono);font-size:0.84em;background:var(--panel2);color:#ffc4cd;padding:1.5px 6px;border-radius:4px;border:1px solid var(--line)}
+  pre{background:#0a0407;border:1px solid var(--line);border-left:3px solid var(--red);border-radius:8px;padding:15px 16px;overflow-x:auto;margin:0 0 20px}
+  pre code{background:none;border:none;padding:0;color:#cbb9bf;font-size:12px;line-height:1.5}
+  blockquote{margin:0 0 20px;padding:14px 18px;background:var(--red-dim);border:1px solid var(--line);border-left:3px solid var(--red);border-radius:8px;color:var(--text)}
   blockquote p{margin:0}
-
-  table{width:100%;border-collapse:collapse;margin:6px 0 24px;font-size:14.5px}
-  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;
-    color:var(--red);border-bottom:1px solid var(--line2);background:rgba(255,42,77,0.05)}
+  table{width:100%;border-collapse:collapse;margin:6px 0 24px;font-size:14px}
+  th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--red);border-bottom:1px solid var(--line2);background:rgba(255,42,77,0.05)}
   tbody tr:hover{background:rgba(255,42,77,0.04)}
   td code,th code{font-size:0.82em}
-
-  footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);
-    font-style:italic;font-size:15px;max-width:64ch}
-
+  .two-col thead th:first-child{width:46%}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);font-style:italic;font-size:15px;max-width:66ch}
   @media(max-width:900px){
     .wrap{grid-template-columns:1fr}
     nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
     nav.toc ol{columns:2;column-gap:8px}
     main{padding:0 20px 70px}
-    h1{font-size:30px}
+    h1{font-size:28px}
   }
 </style>
 </head>
@@ -100,14 +79,18 @@
       <li><a href="#s2">Design principles</a></li>
       <li><a href="#s3">Decision pipeline</a></li>
       <li><a href="#s4">Architecture</a></li>
-      <li><a href="#s5">How it learns</a></li>
-      <li><a href="#s6">Strengths</a></li>
-      <li><a href="#s7">Weaknesses</a></li>
-      <li><a href="#s8">Failure modes</a></li>
-      <li><a href="#s9">Where it's headed</a></li>
-      <li><a href="#s10">Discovery &amp; intel</a></li>
-      <li><a href="#s11">Worked example: ORCL</a></li>
-      <li><a href="#s12">File map</a></li>
+      <li><a href="#s5">Agentic flows</a></li>
+      <li><a href="#s6">Position lifecycle</a></li>
+      <li><a href="#s7">Discovery board</a></li>
+      <li><a href="#s8">Per-position intel</a></li>
+      <li><a href="#s9">Entry &amp; risk guards</a></li>
+      <li><a href="#s10">How it learns</a></li>
+      <li><a href="#s11">Strengths</a></li>
+      <li><a href="#s12">Weaknesses</a></li>
+      <li><a href="#s13">Failure modes</a></li>
+      <li><a href="#s14">Where it's headed</a></li>
+      <li><a href="#s15">Worked example: ORCL</a></li>
+      <li><a href="#s16">File map</a></li>
     </ol>
   </nav>
 
@@ -116,8 +99,8 @@
       <div class="eyebrow">Crucix · Trading Brain</div>
       <h1>Project RedLine<br>System Guide</h1>
       <p class="lede">The autonomous-research, human-approved trading layer of Crucix. What it is, the
-        ideas behind it, how it works end to end, and an honest accounting of where it's strong and where
-        it isn't. Read top to bottom; use the file map as reference.</p>
+        ideas behind it, how it works end to end, the agent and position lifecycles, and an honest
+        accounting of where it's strong and where it isn't.</p>
     </header>
 
     <h2 id="s1"><span class="n">01</span>High concept</h2><div class="rule"></div>
@@ -126,279 +109,269 @@
     <p>Most retail trading bots are reactive and autonomous: a rule fires, an order goes out. RedLine is
       the opposite shape on purpose:</p>
     <ul>
-      <li><strong>One analyst, not a rule engine.</strong> A single LLM agent ("Claude") reviews the whole
-        situation each cycle the way a human analyst would — weighing a thesis, a counter-thesis, the
-        portfolio, and its own past performance — and emits <strong>at most one</strong> proposal.</li>
-      <li><strong>Recommends, doesn't execute.</strong> Proposals are Accept/Deny cards. Nothing hits the
-        brokerage until you approve (unless you flip on Auto mode). The one exception is capital
-        protection: hard stop-losses sell without asking.</li>
-      <li><strong>Breadth most retail systems don't have.</strong> It fuses ~39 live sources —
-        macro/economic, live prices, congressional trades, SEC filings, policy/executive actions,
-        semiconductor lead indicators, and geopolitical OSINT — into the analyst's view.</li>
-      <li><strong>It learns.</strong> Every resolved trade feeds a track record and a confidence-calibration
-        score back into the agent's next decision, so it adjusts toward what has actually worked.</li>
+      <li><strong>One analyst, not a rule engine.</strong> A single LLM agent reviews the whole situation
+        each cycle — thesis, counter-thesis, portfolio, its own past performance — and emits
+        <strong>at most one</strong> proposal.</li>
+      <li><strong>Recommends, doesn't execute.</strong> Proposals are Accept/Deny cards; nothing hits the
+        brokerage until you approve (unless you flip on Auto). The one exception is capital protection:
+        hard stop-losses sell without asking.</li>
+      <li><strong>Breadth most retail systems don't have.</strong> ~39 live sources — macro, prices,
+        congressional trades, SEC filings, policy actions, semiconductor lead indicators, OSINT.</li>
+      <li><strong>It learns.</strong> Every resolved trade feeds a track record + confidence calibration
+        back into the next decision.</li>
     </ul>
-    <p>The guiding value, adapted from risk-first trading desks: <strong>"survives" beats "looks
-      profitable."</strong> Discipline (stop-losses, a circuit breaker, position sizing, approval gating)
-      is never waived; aggression is a dial on top of it.</p>
+    <p>The guiding value: <strong>"survives" beats "looks profitable."</strong> Discipline is never
+      waived; aggression is a dial on top of it.</p>
 
     <h2 id="s2"><span class="n">02</span>Design principles</h2><div class="rule"></div>
     <ol>
-      <li><strong>Human-in-the-loop by default.</strong> Approval gating is the safety model. Auto mode is opt-in.</li>
-      <li><strong>Deterministic risk, independent of the model.</strong> The stop-loss watcher and the
-        account circuit breaker are plain code with hard thresholds. The LLM cannot argue its way past them.</li>
-      <li><strong>Quality over quantity.</strong> Most cycles are <code>NO_ACTION</code>. A daily new-buy cap discourages overtrading.</li>
-      <li><strong>Every call is explainable.</strong> Each proposal carries <code>reasoning</code>, a
-        <code>bearCase</code>, cited <code>sources</code>, and a <code>confidence</code> score. Reports are generated for the record.</li>
-      <li><strong>Memory and learning.</strong> A per-stock "stance book" gives cross-cycle consistency; a track record + calibration close the feedback loop.</li>
-      <li><strong>Token-frugal.</strong> The sweep is distilled to a compact (~700–900 token) digest; the default agent runs on a Claude subscription via the CLI rather than per-token API billing.</li>
+      <li><strong>Human-in-the-loop by default.</strong> Approval gating is the safety model; Auto is opt-in.</li>
+      <li><strong>Deterministic risk, independent of the model.</strong> The stop-loss watcher and circuit breaker are plain code with hard thresholds the LLM can't argue past.</li>
+      <li><strong>Quality over quantity.</strong> Most cycles are <code>NO_ACTION</code>; a daily cap and a minimum-conviction floor discourage overtrading and coin-flips.</li>
+      <li><strong>Every call is explainable.</strong> Reasoning, a bear case, cited sources, a confidence number, plus generated reports.</li>
+      <li><strong>Memory and learning.</strong> A per-stock stance book + a track record + calibration close the loop.</li>
+      <li><strong>Token-frugal.</strong> A compact digest; the default agent runs on a Claude subscription, not per-token billing.</li>
     </ol>
 
     <h2 id="s3"><span class="n">03</span>The decision pipeline (end to end)</h2><div class="rule"></div>
     <pre><code>Sources  →  Synthesize  →  Agent context  →  Claude decides  →  Accept → Execute  →  Feedback ↻
-(~39 feeds)  (clean+delta   (+ portfolio,     (think → bear      (guards →          (resolve P&amp;L →
+(~39 feeds)  (clean+delta   (+ discovery,     (think → bear      (guards →          (resolve P&amp;L →
              +ideas/theses)  stances, record,  case → ONE call)   place order)       recalibrate)
                              guardrails)              │
                                                       └──→ NO_ACTION (nothing trades)</code></pre>
     <p>The feedback arrow is the point: resolved outcomes re-enter the agent's context, so the loop
       tightens over time. The <strong>stance book</strong> also updates "sideways" every cycle — even on a
-      NO_ACTION sweep the agent can revise its per-stock plan, so its memory changes far more often than it trades.</p>
+      NO_ACTION sweep the agent revises its per-stock plan, so memory changes far more often than it trades.</p>
 
     <h2 id="s4"><span class="n">04</span>Architecture, layer by layer</h2><div class="rule"></div>
-
     <h3>4.1 Data layer — the sweep</h3>
-    <ul>
-      <li><strong>Entry:</strong> <code>apis/briefing.mjs → fullBriefing()</code> runs ~39 sources in
-        parallel, each with a 30s timeout. Failures are isolated — one dead feed never stalls the sweep.</li>
-      <li><strong>Sources</strong> span tiers: core OSINT/geopolitical (GDELT, OpenSky, FIRMS, ACLED…),
-        economic/financial (FRED, Treasury, BLS, EIA, GSCPI), live market data (Yahoo quotes + movers),
-        congressional trades + insiders (<strong>Bargo</strong>), policy/executive actions (Federal
-        Register), SEC EDGAR (8-K/Form 4), semiconductor lead indicators (TrendForce), and news (Finnhub,
-        NewsAPI). Many are keyless; see <code>SOURCES.md</code>.</li>
-      <li><strong>Synthesis:</strong> <code>dashboard/inject.mjs → synthesize()</code> maps raw payloads into
-        clean, predictable fields — the boundary where "40 different API shapes" becomes one schema.</li>
-      <li><strong>Delta + memory:</strong> <code>lib/delta</code> compares this sweep to the last and flags
-        what escalated or is new, gating expensive LLM work when nothing material changed.</li>
-    </ul>
-
-    <h3>4.2 Intelligence layer — shared market read</h3>
-    <ul>
-      <li><strong>Ideas</strong> (<code>lib/llm/ideas.mjs</code>) — a market-wide brief of leverageable setups, throttled and delta-gated.</li>
-      <li><strong>Theses</strong> (<code>lib/llm/thesis.mjs</code>) — forward-pacing megatrend → "unpriced rung" maps (a trend's bottleneck → the second-order stock that benefits). Cached across restarts.</li>
-      <li><strong>The digest:</strong> <code>compactSweepForLLM()</code> distills everything the agent needs into a compact text block — the single biggest token lever.</li>
-    </ul>
-
-    <h3>4.3 The agent — one analyst, one call</h3>
-    <ul>
-      <li><strong>Core:</strong> <code>lib/llm/analyst.mjs → generateProposal()</code>. One
-        <code>provider.complete()</code> call to Claude (default via the <code>claude</code> CLI on a
-        subscription; <strong>Gemini</strong> fallback). No tool-calling loop — the context is pre-assembled
-        and the model returns one JSON object.</li>
-      <li><strong>The system prompt</strong> encodes the method: <strong>THINK FIRST</strong> (write
-        <code>reasoning</code> and the strongest <code>bearCase</code> before deciding — if the bear case
-        wins → <code>NO_ACTION</code>); <strong>PRIORITY</strong> (urgent maintenance → best new buy →
-        NO_ACTION); R/R floors, PDT handling, size-to-buying-power, "small size is fine".</li>
-      <li><strong>Horizons double as risk bands:</strong> <code>INTRADAY</code> (~-2% stop),
-        <code>SWING</code> (~-5%), <code>LONG</code> (~-12%), each with trailing behavior. A mandatory
-        <code>stopLoss</code> is required on every new buy.</li>
-      <li><strong>Strategy modes</strong> tune the bar for <em>acting</em>, never the risk floors:
-        Conservative / Balanced / Aggressive / Scalper, plus regime-aware <strong>AUTO</strong>
-        (high VIX → Conservative, calm + risk-on → Aggressive, heavy dislocation → Scalper).</li>
-    </ul>
-
+    <p><code>apis/briefing.mjs → fullBriefing()</code> runs ~39 sources in parallel (30s timeout each,
+      isolated failures). <code>dashboard/inject.mjs → synthesize()</code> maps raw payloads into one
+      clean schema; <code>lib/delta</code> gates expensive LLM work when nothing material changed.</p>
+    <h3>4.2 Intelligence layer</h3>
+    <p><strong>Ideas</strong> (<code>lib/llm/ideas.mjs</code>), <strong>theses</strong>
+      (<code>lib/llm/thesis.mjs</code>, forward-pacing megatrend → "unpriced rung"), and the
+      <strong>digest</strong> (<code>compactSweepForLLM()</code>) — the biggest token lever.</p>
+    <h3>4.3 The agent — one call</h3>
+    <p><code>lib/llm/analyst.mjs → generateProposal()</code>: one call to Claude (CLI default; Gemini
+      fallback), no tool loop, one JSON object out. Horizons double as risk bands: INTRADAY ~-2%,
+      SWING ~-5%, LONG ~-12%.</p>
     <h3>4.4 Memory &amp; learning</h3>
-    <ul>
-      <li><strong>Stance book</strong> (<code>lib/stances/store.mjs</code>) — the agent's living per-stock
-        plan: a stance (WATCH / ACCUMULATE / HOLD / TRIM / EXIT / AVOID), a thesis, an entry plan, an exit,
-        a confidence, and an investment horizon. Persists across sweeps and is revised via
-        <code>stanceUpdates</code> — consistency instead of deciding from scratch.</li>
-      <li><strong>Track record</strong> (<code>lib/llm/trackRecord.mjs</code>) — resolved trades distilled
-        into win rate, profit factor, by-horizon/by-signal performance, plus behavioral self-corrections
-        ("your avg win is smaller than your avg loss — you're cutting winners short").</li>
-      <li><strong>Confidence calibration</strong> (<code>lib/llm/calibration.mjs</code>) — buckets resolved
-        trades by claimed confidence vs. realized win rate, plus a <strong>Brier score</strong>
-        (0 = perfect, 0.25 = coin-flip). Tells the agent when it's over- or under-confident, and in which band.</li>
-      <li><strong>Standing directives</strong> (<code>lib/directives/store.mjs</code>) — general user
-        instructions the agent must follow, added via "Propose a Plan".</li>
-    </ul>
-
-    <h3>4.5 Risk layer — deterministic, model-independent</h3>
-    <ul>
-      <li><strong>Hard stop-loss watcher</strong> (<code>lib/alerts/stopLossWatcher.mjs</code>) — runs on
-        its own fast timer, <strong>bypasses Accept/Deny</strong>, auto-sells using each proposal's stop (or
-        the per-horizon floor), trails to lock gains, and handles the intraday EOD lifecycle. The one place
-        the system acts without you.</li>
-      <li><strong>Account circuit breaker</strong> (<code>lib/risk/circuitBreaker.mjs</code>) — if the
-        account is down more than <code>maxDailyLossPct</code> on the day or <code>maxDrawdownPct</code>
-        from its peak, it <strong>halts new buys</strong> (maintenance/exits still allowed). It pauses new
-        risk; it does not auto-flatten.</li>
-      <li><strong>Mechanical guards on Accept</strong> — a live-quote sanity check (rejects implausible
-        prices — a hallucination guard), the PDT day-trade circuit, a fractional→<code>Day</code> fix, and
-        a no-size rejection before any order is sent.</li>
-    </ul>
-
-    <h3>4.6 Execution &amp; proposal lifecycle</h3>
-    <ul>
-      <li><strong>Store</strong> (<code>lib/proposals/store.mjs</code>) — each proposal persists with a
-        status: <code>PENDING → ACCEPTED | DENIED | EXPIRED | EXECUTED | FAILED</code>. Expiry
-        <strong>deletes</strong> the Telegram card so stale offers disappear.</li>
-      <li><strong>Accept path</strong> (<code>server.mjs → acceptProposal</code>) — guards →
-        <code>snapTrade.PlaceOrder</code> → <code>logDecisions</code> → <code>generateTradeReport</code>.
-        In Auto mode a proposal self-accepts and the card is edited in place to the real outcome
-        (✅ Executed / ❌ Failed).</li>
-      <li><strong>Brokerage</strong> (<code>lib/alerts/snaptrade.mjs</code>) — SnapTrade; reads cached +
-        throttled; a full exit uses <code>ClosePosition</code> (exact owned quantity, no dust).</li>
-    </ul>
-
+    <p>Stance book (<code>lib/stances/store.mjs</code>), track record / calibration
+      (<code>lib/llm/trackRecord.mjs</code>, <code>calibration.mjs</code>), directives. See §10.</p>
+    <h3>4.5 Risk layer — deterministic</h3>
+    <p>Stop-loss watcher, circuit breaker, post-stop moratorium, mechanical guards. See §9.</p>
+    <h3>4.6 Execution &amp; lifecycle</h3>
+    <p><code>lib/proposals/store.mjs</code> + <code>server.mjs → acceptProposal</code>. See §6.</p>
     <h3>4.7 Delivery &amp; control</h3>
+    <p>Dashboard, Telegram, Propose/Ask. See §5.</p>
+    <h3>4.8 State (<code>runs/</code>)</h3>
+    <p>Flat JSON: <code>settings</code>, <code>stances</code>, <code>decisions</code> (ledger + P&amp;L),
+      <code>proposals</code>, <code>directives</code>, <code>breaker</code>, <code>theses</code>,
+      <code>moratoriums</code>, <code>ma-state</code>, <code>latest</code>.</p>
+
+    <h2 id="s5"><span class="n">05</span>Agentic flows — how the agent decides</h2><div class="rule"></div>
+    <p>Three distinct LLM flows. All are read-mostly except the sweep, the only one that can propose a trade.</p>
+    <h3>5.1 The sweep decision loop (the main agent)</h3>
+    <pre><code>build context ─▶ THINK FIRST ─▶ PRIORITY (stop at first that applies) ─▶ emit ONE JSON
+(digest +        (reasoning +     1. URGENT MAINTENANCE on a held name       (proposal
+ MARKET_SETUPS +  strongest        (thesis broken / stop breached / MA        + stanceUpdates[])
+ holdings +       bearCase; if      cross / insider–13F selling / profit)
+ stances +        bear wins       2. BEST NEW_BUY — start from MARKET_SETUPS,
+ track record +   → NO_ACTION)        skip support-tests &amp; chases
+ directives +                      3. NO_ACTION
+ moratoriums +
+ strategy mode)</code></pre>
     <ul>
-      <li><strong>Dashboard</strong> (<code>dashboard/public/redline.html</code>) — portfolio header + value
-        chart, positions, orders, the stance book (with clickable tags + horizon), the decision-cycle panel
-        with a live calibration Brier readout, a ticker strip, a reports viewer, and a settings gear.</li>
-      <li><strong>Telegram</strong> (<code>lib/alerts/telegram.mjs</code>) — Accept/Deny cards to a proposals
-        channel; alerts to a news channel. Commands: <code>/info /plan /propose /ask /stance /cooldowns
-        /lift /portfolio</code> (trades) and <code>/status /sweep /brief /ask</code> (news).</li>
-      <li><strong>Propose a Plan / Ask</strong> — push an idea or directive (agent returns
-        ACCEPT / PARTIAL / DENY), or ask read-only questions grounded in the live plan + sweep.</li>
+      <li><strong>THINK FIRST</strong> — <code>reasoning</code> + the single strongest <code>bearCase</code> before a verdict; if the bear case wins → <code>NO_ACTION</code>.</li>
+      <li><strong>One proposal max</strong> — NEW_BUY, MAINTENANCE (usually a sell), or NO_ACTION.</li>
+      <li><strong>Stance updates every sweep</strong> — even on NO_ACTION the agent revises its per-stock plan, so memory changes far more often than it trades.</li>
+      <li><strong>Strategy mode</strong> tunes the <em>bar for acting</em> (Conservative/Balanced/Aggressive/Scalper/custom + regime-aware AUTO), never the risk floors.</li>
     </ul>
+    <h3>5.2 Ask — read-only</h3>
+    <p>Answers questions grounded in the live plan: holdings (real P&amp;L), stances, active hard stops,
+      recent trades, track record, directives, and the current sweep. It explains; it never changes state.
+      In the news channel, <code>/ask</code> answers current-events/geopolitics grounded in the sweep (and
+      can reply to a posted story).</p>
+    <h3>5.3 Propose — user-driven plan edits</h3>
+    <p>The user suggests a change in plain English ("watch URA", "promote MANE to swing", "drop WDC"). The
+      agent returns <strong>ACCEPT / PARTIAL / DENY</strong> with reasoning, then applies accepted stance
+      edits, a standing directive, or a <strong>horizon retype</strong> of a held position. Reckless ideas are denied.</p>
 
-    <h3>4.8 State (the <code>runs/</code> directory)</h3>
-    <p>Flat JSON stores, each a single source of truth: <code>settings.json</code>, <code>stances.json</code>,
-      <code>decisions.json</code> (the trade ledger + resolved P&amp;L), <code>proposals.json</code>,
-      <code>directives.json</code>, <code>breaker.json</code>, <code>theses.json</code>,
-      <code>moratoriums.json</code>, <code>ma-state.json</code>, <code>latest.json</code>.</p>
-
-    <h2 id="s5"><span class="n">05</span>How it learns (the loop that matters)</h2><div class="rule"></div>
-    <ol>
-      <li>A proposal is accepted → <code>logDecisions</code> records it <strong>with the stated confidence</strong>.</li>
-      <li><code>positionResolver</code> later marks it resolved (win/loss/breakeven + P&amp;L).</li>
-      <li>On the next sweep, <code>buildTrackRecord()</code> and <code>buildCalibration()</code> read the resolved ledger and inject compact self-corrections into the agent's context.</li>
-      <li>The agent adjusts: downweights losing horizons/signals, leans into winners, recalibrates its confidence numbers.</li>
-    </ol>
-    <p>This is the single biggest lever on decision quality — it turns a reactive proposer into something
-      that improves with its own history. It only activates after a minimum sample
-      (<code>TRACK_RECORD_MIN</code>, <code>CALIBRATION_MIN</code>) so it doesn't over-fit two trades.</p>
-
-    <h2 id="s6"><span class="n">06</span>Strengths</h2><div class="rule"></div>
-    <ul>
-      <li><strong>Safety-first by construction.</strong> Approval gating + a deterministic risk layer the model can't override — a genuinely different posture than autonomous rule bots.</li>
-      <li><strong>Analyst-grade breadth.</strong> Macro + policy + congressional + SEC + semiconductor + OSINT in one view, with a top-down "megatrend → unpriced rung" funnel.</li>
-      <li><strong>It explains itself.</strong> Reasoning, an explicit bear case, cited sources, and a confidence number on every call — plus generated reports.</li>
-      <li><strong>It calibrates.</strong> Track record + Brier-scored confidence attacks the two classic failure modes (overconfidence, cutting winners short).</li>
-      <li><strong>Consistency via memory.</strong> The stance book keeps a coherent plan per stock across cycles.</li>
-      <li><strong>Cost-efficient.</strong> Token-frugal digest; default agent on a Claude subscription; most sources free-tier or keyless.</li>
-      <li><strong>Tunable aggression without tunable risk.</strong> Strategy modes move the bar for acting while the stop-loss / R-R / circuit-breaker floors stay fixed.</li>
-    </ul>
-
-    <h2 id="s7"><span class="n">07</span>Weaknesses &amp; limitations</h2><div class="rule"></div>
-    <ul>
-      <li><strong>Signal fragility on free tiers.</strong> Keyed sources go dark when a quota is exhausted; the agent isn't yet told <em>which</em> signals are dark.</li>
-      <li><strong>Latency vs. autonomous bots.</strong> Approvals happen at sweep interval, and every exit except the hard stop is a proposal — a deliberate trade of speed for control.</li>
-      <li><strong>Cold-start learning.</strong> Track record + calibration need a meaningful sample; learning is <strong>live-only</strong> (no backtest/paper harness yet).</li>
-      <li><strong>LLM variance.</strong> Guards catch <em>mechanically</em> unsafe orders, not a plausible-looking bad <em>idea</em> — a user can still accept one.</li>
-      <li><strong>Attribution is per-confidence, not yet per-source.</strong> The system doesn't yet measure which of the ~39 sources actually predict outcomes, so breadth can add noise.</li>
-      <li><strong>Single-tenant, flat-file state.</strong> <code>runs/*.json</code> isn't concurrency-safe or namespaced per user; multitenancy is designed but not built.</li>
-      <li><strong>Operational dependencies.</strong> The default agent needs the <code>claude</code> CLI logged in on the host; SnapTrade + Telegram must be configured; a few data points are cached/stale.</li>
-      <li><strong>Stock/market-hours bound.</strong> It operates in market windows, not 24/7.</li>
-    </ul>
-
-    <h2 id="s8"><span class="n">08</span>Failure modes &amp; the safeguards that cover them</h2><div class="rule"></div>
-    <table>
-      <thead><tr><th>Failure</th><th>What protects against it</th></tr></thead>
+    <h2 id="s6"><span class="n">06</span>Position lifecycle — discovery to exit</h2><div class="rule"></div>
+    <pre><code>DISCOVER ─▶ AGENT JUDGES ─▶ GATES ─▶ EXECUTE ─▶ HOLD / MONITOR ─▶ EXIT ─▶ RECORD
+(board      (THINK + bear   (§9)     (place +    (per-sweep        (4 ways   (report +
+ surfaces    case; pick a             log +       intel + stance    below)    learn;
+ it)         real setup)              stance +    revise + retype)            stop → moratorium)
+                                      enforced stop)</code></pre>
+    <p><strong>Entry.</strong> A candidate clears the board (§7), the agent judges it a real setup, it
+      passes every gate (§9), and executes. On fill: the stance becomes <code>HOLD</code> with the real
+      entry, the position's <strong>horizon</strong>, and a <strong>code-enforced hard stop</strong>.</p>
+    <p><strong>Hold / monitor.</strong> Every sweep the position is re-read with company depth (§8). The
+      stance is revised as the view changes, and the agent (or you, via <code>/propose</code>) can
+      <strong>retype</strong> it up the horizon ladder (INTRADAY→SWING→LONG) when a winner has room —
+      widening the stop and changing EOD behavior. The <strong>anti-churn</strong> guard stops a
+      just-entered loser from being whipsawed out (winners still scalp fast).</p>
+    <p><strong>Exit — four ways, each writes a report and closes the stance:</strong></p>
+    <table class="two-col">
+      <thead><tr><th>Exit</th><th>Trigger &amp; notes</th></tr></thead>
       <tbody>
-        <tr><td>A data feed dies or rate-limits</td><td>Per-source isolation + timeout; dark signals logged; congress serves stale-on-error</td></tr>
-        <tr><td>Model proposes an absurd price</td><td>Live-quote hallucination guard rejects the order</td></tr>
-        <tr><td>Account bleeds out</td><td>Circuit breaker halts new buys at daily-loss / drawdown thresholds</td></tr>
-        <tr><td>A position craters</td><td>Hard stop-loss watcher auto-sells without approval</td></tr>
-        <tr><td>Overtrading</td><td>Daily new-buy cap + "most cycles NO_ACTION" prompt bias</td></tr>
-        <tr><td>Overconfident sizing</td><td>Confidence calibration feeds the bias back for self-correction</td></tr>
-        <tr><td>Re-buying a name that just stopped out</td><td>Post-stop moratorium cooldown + logged failed thesis</td></tr>
-        <tr><td>Whipsaw churn on a volatile name</td><td>MA-cross hysteresis + anti-churn hold guard</td></tr>
-        <tr><td>Order placed with no size</td><td>No-size guard rejects the BUY before it reaches the broker</td></tr>
-        <tr><td>PDT violation</td><td><code>isDayTrade</code> circuit blocks the round-trip</td></tr>
-        <tr><td>Stale offers linger</td><td>Proposals expire and the Telegram card auto-deletes</td></tr>
+        <tr><td>Agent MAINTENANCE sell</td><td>thesis break / take-profit the agent proposes; a full exit uses <code>ClosePosition</code> (exact qty, no dust)</td></tr>
+        <tr><td><strong>Hard stop</strong></td><td>price ≤ the enforced stop; auto-sells, no approval; a loss → <strong>moratorium</strong> (cooldown + logged failure)</td></tr>
+        <tr><td><strong>Trailing stop</strong></td><td>a profit retraces past the trail distance; locks gains once in profit</td></tr>
+        <tr><td><strong>EOD profit-lock</strong></td><td>an INTRADAY position up at the close; banks the gain before overnight risk</td></tr>
       </tbody>
     </table>
+    <p><strong>Intraday EOD sub-lifecycle.</strong> A late-session INTRADAY entry is <strong>blocked</strong>
+      (<code>INTRADAY_ENTRY_CUTOFF</code> — no same-day runway). At the close: an INTRADAY <strong>winner</strong>
+      profit-locks; a <strong>loser</strong> holds overnight (converts to SWING coverage) — "close when up, hold when down."</p>
 
-    <h2 id="s9"><span class="n">09</span>Where it's headed</h2><div class="rule"></div>
-    <p>The near-term architectural goal is <strong>multitenancy</strong>: one shared <strong>data server</strong>
-      runs the ~39-source sweep + the ideas/thesis LLM and writes synthesized intelligence to a database;
-      many <strong>RedLine instances</strong> read from it and add per-user portfolio/stances/execution on
-      top. Market/OSINT keys are global and set up once; only SnapTrade user credentials and Telegram chat
-      IDs are per-tenant. The real work is making per-tenant state isolated and concurrency-safe.</p>
-    <p>Other natural extensions: per-source predictive scoring (prune breadth to what pays), a
-      paper/backtest harness so learning isn't live-only, a data-health line in the agent context, and a
-      news-first catalyst detector (catch a guidance/earnings surprise <em>before</em> the big price move).</p>
+    <h2 id="s7"><span class="n">07</span>Discovery &amp; the MARKET_SETUPS board</h2><div class="rule"></div>
+    <p><code>lib/discovery/discover.mjs</code> finds <strong>new</strong> names to buy. Every source already
+      names tickers — the board harvests them, scores each, enriches the leaders, and ranks a shortlist the
+      agent hunts from first.</p>
+    <pre><code>WIDE UNIVERSE ─▶ SCORE ─▶ ENRICH TOP ─▶ RANK + FILTER ─▶ AGENT
+(every ticker    (catalyst  (news +      (drop below       picks
+ any signal       strength)  chart)       MIN_SCORE)        from it
+ named, minus
+ held/cooldown)</code></pre>
+    <p><strong>Scoring</strong> — catalyst up, red flags down:</p>
+    <table class="two-col">
+      <thead><tr><th>Adds points</th><th>Subtracts points</th></tr></thead>
+      <tbody>
+        <tr><td>Congressional cluster buy (scales w/ members)</td><td>Insider selling</td></tr>
+        <tr><td>Exec insider buy (bigger $ = more)</td><td>13F funds cutting stakes</td></tr>
+        <tr><td>Analyst upgrade</td><td>Below its 200-MA (counter-trend)</td></tr>
+        <tr><td>Bullish options sweep</td><td>Below 50-MA + downtrend</td></tr>
+        <tr><td>8-K material event</td><td><strong>50MA support-test</strong> — hugging the 50MA on a pullback (the TSM/IBRX knife-catch)</td></tr>
+        <tr><td>In a HIGH/MED thesis</td><td></td></tr>
+        <tr><td>Big one-day mover (scaled by magnitude)</td><td></td></tr>
+        <tr><td>Confirmed STRONG / BUILDING chart setup</td><td></td></tr>
+      </tbody>
+    </table>
+    <p>Then drop anything below <code>DISCOVERY_MIN_SCORE</code> (noise like a lone +3% wiggle). What
+      reaches the agent is a ranked line with the catalyst, chart, and any ⚠ flags — e.g.
+      <code>MARKET_SETUPS: CEG (score 10 STRONG): insider-buy, bullish-sweep, thesis:AI | &gt;MAs, RSI 61, RS +5 | news: …</code>.
+      The agent favors high score + a STRONG/BUILDING setup + <strong>no ⚠ flags</strong>, and is told that
+      if the best option is a flagged support-test, <strong>that's a NO_ACTION, not a least-bad buy.</strong></p>
+    <blockquote><p><strong>Limit:</strong> it's <strong>catalyst-and-price triggered</strong> — a name only
+      appears if a signal named it or it moved enough to rank in movers. A quiet-but-good setup won't
+      surface (no market-wide technical screener yet).</p></blockquote>
 
-    <h2 id="s10"><span class="n">10</span>Discovery &amp; per-position intelligence</h2><div class="rule"></div>
-    <p>Two capabilities sit on top of the base pipeline: <strong>finding new names</strong>, and
-      <strong>watching the ones you already hold</strong> with company-level depth. Both run inside the
-      sweep and feed the agent digest.</p>
-    <p><strong>Per-name intelligence</strong> — each sweep, every name you <strong>hold</strong>, have a
-      <strong>stance</strong> on, or that ranks as a <strong>discovery candidate</strong> is pulled
-      individually, not just as a macro headline:</p>
+    <h2 id="s8"><span class="n">08</span>Per-position intelligence</h2><div class="rule"></div>
+    <p>Each sweep, every name you <strong>hold</strong>, have a <strong>stance</strong> on, or that ranks as
+      a <strong>discovery candidate</strong> is pulled individually — not just as a macro headline:</p>
     <table>
       <thead><tr><th>Digest line</th><th>What it is</th><th>Source</th></tr></thead>
       <tbody>
-        <tr><td><code>POSITION_NEWS</code></td><td>company-specific headlines (court rulings, guidance, downgrades…)</td><td>Finnhub <code>/company-news</code></td></tr>
+        <tr><td><code>POSITION_NEWS</code></td><td>company-specific headlines (rulings, guidance, downgrades…)</td><td>Finnhub <code>/company-news</code></td></tr>
         <tr><td><code>INSIDER_SELLS</code></td><td>execs/directors reducing a holding (bearish)</td><td>Finnhub insider txns</td></tr>
         <tr><td><code>INSTITUTIONAL_SELLS</code></td><td>13F funds cutting stakes (quarterly, cached)</td><td>Finnhub institutional-ownership</td></tr>
         <tr><td><code>POSITION_TECHNICALS</code></td><td>price vs 50/200-day MA, RSI, RS vs SPY, trend</td><td>Alpaca bars</td></tr>
         <tr><td><code>MA_CROSS</code></td><td>a FRESH cross this sweep (price ±MA, death/golden), hysteresis-debounced</td><td><code>maCrossStore.mjs</code></td></tr>
       </tbody>
     </table>
-    <p><strong>Discovery board (<code>MARKET_SETUPS</code>)</strong> — <code>lib/discovery/discover.mjs</code>
-      harvests every ticker the sweep's signals already name (congress/insider buys, upgrades, option
-      sweeps, 8-Ks, movers scaled by magnitude, thesis targets, prior ideas), scores each by catalyst
-      strength, enriches the top ones with the news + chart above, and ranks a shortlist. A
-      <strong>min-conviction floor</strong> (<code>DISCOVERY_MIN_SCORE</code>) drops single-signal noise;
-      <strong>counter-trend</strong> (&lt;200-MA) and <strong>insider/13F-selling</strong> names are
-      down-weighted. The agent's NEW_BUY step hunts here first.</p>
-    <p><strong>Post-stop moratorium</strong> (<code>lib/risk/moratorium.mjs</code>) — a hard-stop puts the
-      ticker on a re-entry cooldown and logs the failed thesis, so the system doesn't immediately re-buy a
-      name that just stopped it out, and the failure informs later decisions (<code>/cooldowns</code>,
-      <code>/lift</code>).</p>
-    <h3>Position lifecycle controls</h3>
+    <p>This is what lets the agent catch a thesis-break on a name you own (a court ruling, insiders dumping,
+      a moving-average breakdown) instead of staying bullish on a stale thesis.</p>
+
+    <h2 id="s9"><span class="n">09</span>Entry &amp; risk guards</h2><div class="rule"></div>
+    <p><strong>Entry gates</strong> — a NEW_BUY must clear all of these before it's placed (exits/maintenance are never gated):</p>
+    <table>
+      <thead><tr><th>Gate</th><th>Blocks</th><th>Knob</th></tr></thead>
+      <tbody>
+        <tr><td>Minimum conviction</td><td>a coin-flip buy below the confidence floor</td><td><code>MIN_BUY_CONFIDENCE</code> (55)</td></tr>
+        <tr><td>Regular session</td><td>pre/after-market entries (thin, noisy)</td><td><code>ALLOW_EXTENDED_HOURS_ENTRY</code></td></tr>
+        <tr><td>Intraday cutoff</td><td>a late INTRADAY buy with no same-day runway</td><td><code>INTRADAY_ENTRY_CUTOFF</code> (1500 ET)</td></tr>
+        <tr><td>Moratorium</td><td>re-buying a name that just stopped out</td><td><code>MORATORIUM_HOURS</code> (48)</td></tr>
+        <tr><td>Investment type</td><td>a horizon the user disabled</td><td><code>investmentTypes</code></td></tr>
+        <tr><td>Daily cap</td><td>overtrading beyond the day's budget</td><td><code>MAX_PROPOSALS_PER_DAY</code></td></tr>
+        <tr><td>Buying-power floor</td><td>a buy that would drop below the min</td><td><code>minBuyingPower</code></td></tr>
+        <tr><td>No-size / price-safety / PDT</td><td>no size, an implausible price, or a PDT violation</td><td>mechanical</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Deterministic risk layer</strong> (model cannot override):</p>
     <ul>
-      <li><strong>Investment-type retype</strong> — the agent (or you, via <code>/propose</code>) can
-        promote a held position INTRADAY→SWING→LONG when a winner has more room; the live stop floor + EOD
-        behavior change to match.</li>
-      <li><strong>Intraday EOD lifecycle</strong> — a late-session INTRADAY entry is blocked
-        (<code>INTRADAY_ENTRY_CUTOFF</code>, no same-day runway); at the close an INTRADAY <strong>winner</strong>
-        is profit-locked and a <strong>loser</strong> holds overnight.</li>
-      <li><strong>Anti-whipsaw</strong> — MA-cross hysteresis + an anti-churn hold guard (a just-entered
-        loser isn't soft-exited on a reversed signal; winners still scalp fast; the hard stop always covers the downside).</li>
-      <li><strong>Direct stance control</strong> — set any tag now (<code>/stance &lt;TICKER&gt; &lt;HOLD|WATCH|EXIT|…&gt;</code> or the dashboard ✎), independent of the agent.</li>
-      <li><strong>Every exit writes a report</strong> — agent sells, hard stops, trailing/EOD profit-locks — each with the realized result (entry → exit, up/down, WIN/LOSS verdict).</li>
+      <li><strong>Hard stop-loss watcher</strong> — auto-sells at the enforced stop, <strong>trails</strong> to lock gains, runs the intraday EOD lifecycle.</li>
+      <li><strong>Circuit breaker</strong> — halts new buys at <code>maxDailyLossPct</code> / <code>maxDrawdownPct</code> (maintenance/exits still allowed).</li>
+      <li><strong>Anti-whipsaw</strong> — MA-cross hysteresis + an anti-churn hold guard.</li>
+      <li><strong>Post-stop moratorium</strong> — cooldown + logged failed thesis after a hard stop.</li>
     </ul>
 
-    <h2 id="s11"><span class="n">11</span>Worked example — how a new name is discovered (ORCL +12%)</h2><div class="rule"></div>
+    <h2 id="s10"><span class="n">10</span>How it learns (the loop that matters)</h2><div class="rule"></div>
+    <ol>
+      <li>A proposal is accepted → <code>logDecisions</code> records it <strong>with the stated confidence</strong>.</li>
+      <li><code>positionResolver</code> later marks it resolved (win/loss/breakeven + P&amp;L).</li>
+      <li>On the next sweep, <code>buildTrackRecord()</code> + <code>buildCalibration()</code> inject compact self-corrections.</li>
+      <li>The agent adjusts: downweights losing horizons/signals, leans into winners, recalibrates confidence.</li>
+    </ol>
+    <p>The single biggest lever on decision quality. It activates only after a minimum sample
+      (<code>TRACK_RECORD_MIN</code>, <code>CALIBRATION_MIN</code>) so it doesn't over-fit two trades.</p>
+
+    <h2 id="s11"><span class="n">11</span>Strengths</h2><div class="rule"></div>
+    <ul>
+      <li><strong>Safety-first by construction</strong> — approval gating + a risk layer the model can't override.</li>
+      <li><strong>Analyst-grade breadth</strong> — macro + policy + congressional + SEC + semiconductor + OSINT in one view.</li>
+      <li><strong>A real discovery funnel</strong> — ranked, vetted candidates with entry guards that filter noise and knife-catches.</li>
+      <li><strong>It explains itself</strong> — reasoning, a bear case, cited sources, a confidence number, and reports.</li>
+      <li><strong>It calibrates</strong> — Brier-scored confidence attacks overconfidence and cutting winners short.</li>
+      <li><strong>Consistency via memory</strong>, <strong>cost-efficient</strong>, and <strong>tunable aggression without tunable risk</strong>.</li>
+    </ul>
+
+    <h2 id="s12"><span class="n">12</span>Weaknesses &amp; limitations</h2><div class="rule"></div>
+    <ul>
+      <li><strong>Signal fragility on free tiers</strong> — keyed sources go dark on quota; the agent isn't yet told which are dark.</li>
+      <li><strong>Latency vs. autonomous bots</strong> — approvals at sweep interval; every exit except the hard stop is a proposal.</li>
+      <li><strong>Cold-start + live-only learning</strong> — no backtest/paper harness.</li>
+      <li><strong>LLM variance</strong> — guards catch <em>mechanically</em> unsafe orders, not a plausible-looking bad <em>idea</em>.</li>
+      <li><strong>Discovery is catalyst/price-triggered</strong> — a quiet-but-good setup won't surface.</li>
+      <li><strong>Attribution per-confidence, not yet per-source</strong>; <strong>single-tenant flat-file state</strong>; <strong>market-hours bound</strong>.</li>
+    </ul>
+
+    <h2 id="s13"><span class="n">13</span>Failure modes &amp; the safeguards that cover them</h2><div class="rule"></div>
+    <table class="two-col">
+      <thead><tr><th>Failure</th><th>What protects against it</th></tr></thead>
+      <tbody>
+        <tr><td>A data feed dies or rate-limits</td><td>Per-source isolation + timeout; dark signals logged; congress serves stale-on-error</td></tr>
+        <tr><td>Model proposes an absurd price</td><td>Live-quote hallucination guard rejects the order</td></tr>
+        <tr><td>Account bleeds out</td><td>Circuit breaker halts new buys at daily-loss / drawdown thresholds</td></tr>
+        <tr><td>A position craters</td><td>Hard stop-loss watcher auto-sells without approval</td></tr>
+        <tr><td>Coin-flip / low-conviction entry</td><td>Minimum-conviction floor drops it</td></tr>
+        <tr><td>Buying a knife-catch at the 50MA</td><td>Support-test flag + agent "that's a NO_ACTION" rule</td></tr>
+        <tr><td>Re-buying a name that just stopped out</td><td>Post-stop moratorium cooldown + logged thesis</td></tr>
+        <tr><td>Whipsaw churn on a volatile name</td><td>MA-cross hysteresis + anti-churn hold guard</td></tr>
+        <tr><td>Late intraday entry → overnight gap</td><td>Intraday entry cutoff; winners profit-lock at EOD</td></tr>
+        <tr><td>Order placed with no size</td><td>No-size guard rejects it before the broker</td></tr>
+        <tr><td>False "placed" notif on a failed auto-trade</td><td>The card is edited in place to the real outcome (✅/❌)</td></tr>
+        <tr><td>Overtrading / PDT / stale offers</td><td>Daily cap + NO_ACTION bias · <code>isDayTrade</code> circuit · proposals expire &amp; auto-delete</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="s14"><span class="n">14</span>Where it's headed</h2><div class="rule"></div>
+    <p>Near-term: <strong>multitenancy</strong> — one shared data server runs the sweep + ideas/thesis LLM
+      and writes to a database; many RedLine instances read from it and add per-user state. Market/OSINT
+      keys are global; only SnapTrade user credentials and Telegram chat IDs are per-tenant.</p>
+    <p>Other extensions: per-source predictive scoring, a paper/backtest harness, a data-health line in the
+      agent context, a <strong>news-first catalyst detector</strong> (catch a guidance/earnings surprise
+      <em>before</em> the big move), and a <strong>confidence-decay exit</strong> (trim a held position once
+      the agent's own confidence collapses).</p>
+
+    <h2 id="s15"><span class="n">15</span>Worked example — how a new name is discovered (ORCL +12%)</h2><div class="rule"></div>
     <p>A name you don't hold enters the system <strong>only through the movers screener</strong> — then travels to the agent:</p>
     <ol>
-      <li><strong>Front door — movers.</strong> <code>apis/sources/movers.mjs</code> (Yahoo gainers screener)
-        ranks ORCL at +12% → <code>synthesized.movers.gainers</code>. (Digest: <code>MARKET_GAINERS: ORCL +12%</code>.)</li>
-      <li><strong>Scored.</strong> <code>harvestAndScore()</code> scores the gainer <strong>by magnitude</strong>
-        — ≥10% → <strong>3</strong> (a small wiggle would be 1 and filtered as noise; this is how a real
-        catalyst mover clears the board but RIG-style churn doesn't).</li>
-      <li><strong>Monitored.</strong> ORCL joins the enrichment set both as a top candidate and as a <strong>big mover (≥6%)</strong>.</li>
-      <li><strong>Enriched — the "why".</strong> <code>POSITION_NEWS</code> pulls <em>"Oracle surges on
-        FY2029 $30B free-cash-flow guidance"</em> (the catalyst); <code>POSITION_TECHNICALS</code> shows it
-        above both MAs, strong RS.</li>
-      <li><strong>Board.</strong> <code>annotateBoard()</code> → score 3 + setup + news ≈ <strong>4</strong> ≥
-        <code>DISCOVERY_MIN_SCORE</code> → it lands on <code>MARKET_SETUPS</code> with its headline attached.</li>
-      <li><strong>Agent sees it.</strong> <code>buildAnalystContext</code> leads the NEW_BUY hunt from
-        <code>MARKET_SETUPS</code>; ORCL is right in front of the agent, with the guidance catalyst and
-        chart, to judge <strong>re-rating vs. chase</strong>.</li>
-      <li><strong>If it buys</strong> → the normal gates (regular-hours · intraday cutoff · moratorium · size)
-        → execute → stance <code>HOLD</code> + horizon → hard stop → trade report.</li>
+      <li><strong>Front door — movers.</strong> <code>apis/sources/movers.mjs</code> (Yahoo gainers) ranks ORCL at +12% → <code>synthesized.movers.gainers</code>.</li>
+      <li><strong>Scored.</strong> <code>harvestAndScore()</code> scores the gainer <strong>by magnitude</strong> — ≥10% → 3 (a +3% wiggle is 1 and filtered as noise; this is how a catalyst mover clears the board but RIG-style churn doesn't).</li>
+      <li><strong>Monitored.</strong> ORCL joins the enrichment set as a top candidate and a big mover (≥6%).</li>
+      <li><strong>Enriched — the "why".</strong> <code>POSITION_NEWS</code> pulls <em>"Oracle surges on FY2029 $30B free-cash-flow guidance"</em>; <code>POSITION_TECHNICALS</code> shows it above both MAs, strong RS.</li>
+      <li><strong>Board.</strong> <code>annotateBoard()</code> → score 3 + setup + news ≈ 4 ≥ <code>DISCOVERY_MIN_SCORE</code> → on <code>MARKET_SETUPS</code>.</li>
+      <li><strong>Agent sees it.</strong> <code>buildAnalystContext</code> leads the NEW_BUY hunt from the board; ORCL is in front of the agent with its catalyst + chart, to judge re-rating vs. chase.</li>
+      <li><strong>If it buys</strong> → gates (§9) → execute → stance HOLD + horizon → hard stop → trade report.</li>
     </ol>
-    <blockquote><p><strong>The boundary:</strong> this is <strong>price-move triggered</strong> — ORCL's news
-      is pulled <em>because</em> the move was big enough to rank in movers. If it had re-rated on the same
-      news with only a +3% candle (and you didn't hold it), it would still be filtered. A news-first
+    <blockquote><p><strong>The boundary:</strong> this is <strong>price-move triggered</strong> — ORCL's
+      news is pulled <em>because</em> the move was big enough to rank in movers. A news-first
       "guidance/earnings-surprise" signal is the next upgrade to catch catalysts <em>before</em> the big move.</p></blockquote>
 
-    <h2 id="s12"><span class="n">12</span>File map (where to look)</h2><div class="rule"></div>
-    <table>
+    <h2 id="s16"><span class="n">16</span>File map (where to look)</h2><div class="rule"></div>
+    <table class="two-col">
       <thead><tr><th>Area</th><th>File</th></tr></thead>
       <tbody>
         <tr><td>Sweep orchestrator</td><td><code>apis/briefing.mjs</code></td></tr>
@@ -411,14 +384,13 @@
         <tr><td>Stance book + tags/horizon</td><td><code>lib/stances/store.mjs</code></td></tr>
         <tr><td>Track record / calibration</td><td><code>lib/llm/trackRecord.mjs</code>, <code>lib/llm/calibration.mjs</code></td></tr>
         <tr><td>Risk</td><td><code>lib/risk/circuitBreaker.mjs</code>, <code>lib/risk/moratorium.mjs</code>, <code>lib/alerts/stopLossWatcher.mjs</code></td></tr>
-        <tr><td>Proposals / execution</td><td><code>lib/proposals/store.mjs</code>, <code>server.mjs</code> (<code>acceptProposal</code>)</td></tr>
+        <tr><td>Proposals / execution</td><td><code>lib/proposals/store.mjs</code>, <code>server.mjs</code></td></tr>
         <tr><td>Brokerage</td><td><code>lib/alerts/snaptrade.mjs</code></td></tr>
         <tr><td>Plan proposals / Ask</td><td><code>lib/llm/planProposal.mjs</code>, <code>lib/llm/newsAsk.mjs</code>, <code>lib/directives/store.mjs</code></td></tr>
         <tr><td>Strategy modes</td><td><code>lib/llm/modes.mjs</code></td></tr>
         <tr><td>Alerts / commands</td><td><code>lib/alerts/telegram.mjs</code></td></tr>
         <tr><td>Dashboard</td><td><code>dashboard/public/redline.html</code></td></tr>
-        <tr><td>Settings</td><td><code>lib/settings/store.mjs</code></td></tr>
-        <tr><td>Server / sweep loop</td><td><code>server.mjs</code></td></tr>
+        <tr><td>Settings / server</td><td><code>lib/settings/store.mjs</code>, <code>server.mjs</code></td></tr>
         <tr><td>Keys &amp; sources catalog</td><td><code>SOURCES.md</code></td></tr>
       </tbody>
     </table>
@@ -428,21 +400,13 @@
       confidence can move.</footer>
   </main>
 </div>
-
 <script>
-  // Scroll-spy: highlight the active section in the TOC.
-  const links = [...document.querySelectorAll('nav.toc a')];
-  const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
-  const spy = new IntersectionObserver((entries) => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        links.forEach(l => l.classList.remove('active'));
-        const a = map.get(e.target.id);
-        if (a) a.classList.add('active');
-      }
-    });
-  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
-  document.querySelectorAll('main h2[id]').forEach(h => spy.observe(h));
+  const links=[...document.querySelectorAll('nav.toc a')];
+  const map=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
+  const spy=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){
+    links.forEach(l=>l.classList.remove('active'));const a=map.get(e.target.id);if(a)a.classList.add('active');}});},
+    {rootMargin:'-8% 0px -82% 0px',threshold:0});
+  document.querySelectorAll('main h2[id]').forEach(h=>spy.observe(h));
 </script>
 </body>
 </html>
