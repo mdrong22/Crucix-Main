@@ -101,6 +101,7 @@ NOAA, EPA RadNet, Patents, Bluesky, KiwiSDR, CelesTrak (space), CISA-KEV, Hacker
 | `INTRADAY_EOD_LOCK_PCT` | 0.005 | An INTRADAY position up ≥ this at EOD is auto-sold to bank the gain (down ones hold overnight). 0 = off. | 🧑 |
 | `MORATORIUM_HOURS` | 48 | After a hard-stop, the ticker is on a re-entry cooldown this long (the failure is logged + fed to the agent). 0 = off. | 🧑 |
 | `DISCOVERY_MIN_SCORE` | 3 | Minimum composite score for a candidate to reach the MARKET_SETUPS board — filters single-signal noise. | 🧑 |
+| `MIN_BUY_CONFIDENCE` | 55 | A NEW_BUY below this self-rated confidence % is dropped (no coin-flip entries). Exits never gated. | 🧑 |
 
 ---
 

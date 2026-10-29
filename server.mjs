@@ -72,6 +72,10 @@ const ANTICHURN_MIN_PROFIT_PCT = parseFloat(process.env.ANTICHURN_MIN_PROFIT_PCT
 // and only candidates with real conviction (composite discovery score ≥ min) reach the agent's board.
 const ALLOW_EXTENDED_HOURS_ENTRY = /^(1|true|yes)$/i.test(process.env.ALLOW_EXTENDED_HOURS_ENTRY ?? '');
 const DISCOVERY_MIN_SCORE        = parseFloat(process.env.DISCOVERY_MIN_SCORE ?? '3');
+// Minimum self-rated conviction to OPEN a position — below this a NEW_BUY is a coin-flip and is dropped
+// (the strategy modes' confidence bars are soft prompt guidance; this is the hard floor). Exits/maintenance
+// are never gated. Calibration keeps the agent honest about the number it states.
+const MIN_BUY_CONFIDENCE         = parseFloat(process.env.MIN_BUY_CONFIDENCE ?? '55');
 // A fresh INTRADAY buy needs runway to actually flip same-day. After this ET time (HHMM) there isn't
 // enough session left, so a new INTRADAY entry would just carry overnight into gap risk (the MANE case).
 const INTRADAY_ENTRY_CUTOFF      = parseInt(process.env.INTRADAY_ENTRY_CUTOFF ?? '1500', 10); // 3:00 PM ET
@@ -1340,6 +1344,14 @@ async function runProposalCycle(context) {
   if (proposal.action === 'NEW_BUY' && String(proposal.horizon).toUpperCase() === 'INTRADAY' && etHHMM() >= INTRADAY_ENTRY_CUTOFF) {
     console.log(`[PROPOSAL] ⛔ INTRADAY buy blocked — ${proposal.ticker}: ${etHHMM()} ET past cutoff ${INTRADAY_ENTRY_CUTOFF} — no runway to flip same-day (would carry overnight).`);
     setCycle('NO_ACTION', `${proposal.ticker} intraday buy held — too late in session (no same-day runway)`);
+    return;
+  }
+
+  // 4a0d. Minimum conviction — don't open a coin-flip. A NEW_BUY below the confidence floor is dropped
+  //        (the TSM-style 40%-confidence entry). Maintenance/exits are never gated.
+  if (proposal.action === 'NEW_BUY' && Number.isFinite(Number(proposal.confidence)) && Number(proposal.confidence) < MIN_BUY_CONFIDENCE) {
+    console.log(`[PROPOSAL] ⛔ ${proposal.ticker} buy blocked — confidence ${proposal.confidence}% < ${MIN_BUY_CONFIDENCE}% floor (low-conviction entry).`);
+    setCycle('NO_ACTION', `${proposal.ticker} buy held — ${proposal.confidence}% conviction below ${MIN_BUY_CONFIDENCE}% floor`);
     return;
   }
 
