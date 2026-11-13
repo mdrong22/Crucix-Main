@@ -991,21 +991,27 @@ document.addEventListener('keydown',e=>{
 
 // ── TICKER
 // ── PORTFOLIO HEADER
+let _pnl={realized:0,realizedToday:0}; // realized P&L from /api/pnl (resolved trade ledger)
 function buildPortfolioHeader(positions,totalValue){
-  const totalPnl=positions.reduce((s,p)=>s+(num(p.value)-num(p.avg_cost)*num(p.units)),0);
+  const openPnl=positions.reduce((s,p)=>s+(num(p.value)-num(p.avg_cost)*num(p.units)),0); // unrealized (open)
+  const realized=num(_pnl.realized);         // realized (closed trades, all-time)
+  const total=openPnl+realized;              // TOTAL up/down = realized + open
   const winners=positions.filter(p=>num(p.pnl_pct)>0).length;
   const losers=positions.filter(p=>num(p.pnl_pct)<0).length;
-  const pnlUp=totalPnl>=0;
+  const totalUp=total>=0,openUp=openPnl>=0,realUp=realized>=0;
+  const sgn=(v,up)=>`${up?'+':'-'}$${fmt(Math.abs(v),2)}`;
   const displayVal=totalValue!=null?totalValue:positions.reduce((s,p)=>s+num(p.value),0);
   document.getElementById('pfValue').innerHTML=`$${fmt(displayVal,2)}`;
   const pfPnl=document.getElementById('pfPnl');
-  pfPnl.className='pf-chg '+(pnlUp?'up':'dn');pfPnl.style.opacity='1';
-  pfPnl.innerHTML=`${pnlUp?'▲ +':'▼ '}$${fmt(Math.abs(totalPnl),2)} OPEN P&L`;
+  pfPnl.className='pf-chg '+(totalUp?'up':'dn');pfPnl.style.opacity='1';
+  pfPnl.innerHTML=`${totalUp?'▲ ':'▼ '}${sgn(total,totalUp)} TOTAL P&L`;
+  const todayR=num(_pnl.realizedToday);
   document.getElementById('pfStats').innerHTML=[
+    {lbl:'OPEN',val:sgn(openPnl,openUp),cls:openUp?'up':'dn'},
+    {lbl:'REALIZED',val:sgn(realized,realUp),cls:realUp?'up':'dn'},
+    {lbl:'TODAY',val:sgn(todayR,todayR>=0),cls:todayR>=0?'up':'dn'},
     {lbl:'POSITIONS',val:positions.length,cls:'neu'},
-    {lbl:'TOTAL P&L',val:(pnlUp?'+':'')+' $'+fmt(Math.abs(totalPnl),2),cls:pnlUp?'up':'dn'},
-    {lbl:'WINNERS',val:winners,cls:'up'},
-    {lbl:'LOSERS',val:losers,cls:'dn'},
+    {lbl:'W / L',val:winners+' / '+losers,cls:'neu'},
   ].map(s=>`<div class="pf-stat"><div class="pf-stat-lbl">${s.lbl}</div><div class="pf-stat-val ${s.cls}">${s.val}</div></div>`).join('');
   setTimeout(()=>updateWinLossGauge(winners,losers),100);
 }
@@ -1135,6 +1141,7 @@ async function loadAll(manual=false){
     }
     const quotes=d.yfinance?.quotes??null,bp=d.buyingPower??0,totalValue=d.accountTotalValue??null;
     const bpEl=document.getElementById('buyingPwr');if(bpEl)bpEl.textContent=bp!=null?'$'+fmt(bp,2):'—';
+    try{const pr=await fetch('/api/pnl');if(pr.ok)_pnl=await pr.json();}catch{} // realized P&L for the TOTAL figure
     buildPortfolioHeader(positions,totalValue);
     buildPositions(positions,quotes);buildOrders(ordersData);drawChart(positions);
     window._lastPositions=positions;

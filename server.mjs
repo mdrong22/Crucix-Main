@@ -712,6 +712,21 @@ app.get('/api/modes', (req, res) => {
   });
 });
 
+// Realized P&L from the resolved trade ledger — powers the dashboard's TOTAL (realized + open) figure.
+app.get('/api/pnl', (req, res) => {
+  try {
+    const resolved = (loadDecisions() || []).filter(d => d?.resolved);
+    const realized = resolved.reduce((s, d) => s + (Number(d.pnlDollar) || 0), 0);
+    const wins   = resolved.filter(d => d.outcome === 'win').length;
+    const losses = resolved.filter(d => d.outcome === 'loss').length;
+    const todayET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).toDateString();
+    const realizedToday = resolved
+      .filter(d => d.exitTimestamp && new Date(new Date(d.exitTimestamp).toLocaleString('en-US', { timeZone: 'America/New_York' })).toDateString() === todayET)
+      .reduce((s, d) => s + (Number(d.pnlDollar) || 0), 0);
+    res.json({ realized, realizedToday, resolvedCount: resolved.length, wins, losses });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // The agent's living plan per stock — its cross-sweep memory (WATCH/ACCUMULATE/HOLD/…).
 app.get('/api/stances', (req, res) => {
   try { res.json(getStances()); }
