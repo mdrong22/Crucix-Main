@@ -75,6 +75,8 @@ async function fetchQuote(symbol, defaultInterval = `1d`) {
       currency: meta.currency || 'USD',
       exchange: meta.exchangeName || '',
       marketState: meta.marketState || 'UNKNOWN',
+      dayHigh: Number.isFinite(meta.regularMarketDayHigh) ? Math.round(meta.regularMarketDayHigh * 100) / 100 : null,
+      dayLow:  Number.isFinite(meta.regularMarketDayLow)  ? Math.round(meta.regularMarketDayLow  * 100) / 100 : null,
       history,
     };
   } catch (e) {
@@ -159,6 +161,8 @@ export async function GetLiveQuote(ticker) {
     prevClose: data.prevClose,
     changePct: data.changePct,
     marketState: data.marketState,
+    dayHigh: data.dayHigh ?? null,   // session high — so a trailing stop tracks the true peak, not just sampled prices
+    dayLow:  data.dayLow  ?? null,
     // Note: the chart API doesn't always provide real-time Bid/Ask, 
     // so we use price as a fallback to keep the Council happy.
     bid: data.price, 
